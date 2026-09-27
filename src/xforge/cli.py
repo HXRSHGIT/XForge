@@ -104,6 +104,33 @@ def _cmd_check(args) -> int:
     return EXIT_OK
 
 
+def _cmd_formulas(args) -> int:
+    """Every calculation the tool can perform, and where it came from."""
+    from xforge.physics import formula
+
+    reg = formula.registry()
+    if args.id:
+        print(formula.get(args.id).explain())
+        return EXIT_OK
+
+    for tier in (
+        formula.Tier.PRIMARY,
+        formula.Tier.PUBLIC_FORM,
+        formula.Tier.SECONDARY,
+        formula.Tier.CONVENTION,
+    ):
+        group = [f for f in reg.values() if f.tier is tier]
+        if not group:
+            continue
+        gate = "may gate a build" if tier.may_gate else "advisory only"
+        print(f"tier {tier} - {tier.label} ({gate})")
+        for f in sorted(group, key=lambda x: x.id):
+            print(f"  {f.id:22s} {f.equation}")
+            print(f"  {'':22s} {f.source}")
+        print()
+    return EXIT_OK
+
+
 def _cmd_power(args) -> int:
     from xforge import power
 
@@ -166,7 +193,10 @@ def _cmd_power(args) -> int:
             print(f"    {spec.continuous_a} A  ->  {what}")
 
     print()
-    print(f"  method: IPC-2221 (conservative vs IPC-2152)")
+    from xforge.physics.ampacity import IPC2221_TRACE
+
+    print(f"  method: {IPC2221_TRACE.citation()}")
+    print(f"          run `xforge formulas {IPC2221_TRACE.id}` for the full basis")
 
     if args.netclasses:
         import json
@@ -226,6 +256,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p2.add_argument("--csv", type=Path, default=None, help="write a constraint CSV")
     p2.set_defaults(func=_cmd_power)
+
+    fm = sub.add_parser(
+        "formulas", help="list the calculations and their provenance"
+    )
+    fm.add_argument("id", nargs="?", help="explain one formula in full")
+    fm.set_defaults(func=_cmd_formulas)
 
     i = sub.add_parser("inspect", help="summarise a netlist")
     i.add_argument("netlist", type=Path)
