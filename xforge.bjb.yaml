@@ -1,0 +1,32 @@
+# xforge config for the BJB (Battery Junction Box), RevC.
+# Domains and expectations are declared here because a netlist cannot state them.
+project: "BJB RevC - Battery Junction Box"
+
+# Galvanic domains. Working voltages are placeholders until Harsh confirms
+# the pack voltage class for this build; XF003 stays advisory until then.
+domains:
+  - name: HV
+    working_voltage: null        # TODO: confirm (51.2 V / 110 V / 800 V class)
+    description: "Pack side: contactors, shunt, fuse, bus sense"
+    nets:
+      - "PACK_*"
+      - "LOAD_*"
+      - "MAIN_POS"
+      - "PRECHARGE_POS"
+      - "PRECHARGE_NEG"
+      - "BUS_*"
+  - name: LV
+    working_voltage: 12.0
+    description: "Control side: MCU, IoT, coil drive logic, 5 V rails"
+    nets:
+      - "SC_5V"
+      - "*_MON"
+      - "*_CMD"
+      - "COIL_ENABLE_HW"
+
+# Single-pin nets that are intentional. Add to this list only after review.
+expected_dangling: []
+
+# Advisory-only for now. Rules move in here once their false-positive rate
+# on real boards is known. Target: XF001 gating from week 6.
+gating_rules: []

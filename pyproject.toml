@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "xforge"
+version = "0.1.0"
+description = "Design rule checking and generation for Xbattery hardware"
+requires-python = ">=3.11"
+license = { text = "Proprietary - Xbattery Energy Pvt. Ltd." }
+authors = [{ name = "Harsh Thakur" }]
+dependencies = ["pyyaml>=6.0"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+xforge = "xforge.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
