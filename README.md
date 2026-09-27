@@ -46,9 +46,24 @@ kicad-cli sch export netlist --format kicadsexpr -o design.net design.kicad_sch
 |---|---|---|---|
 | XF001 | Signal split across sheets | Error | Xbattery convention; KiCad hierarchical sheet pins |
 | XF002 | Dangling net | Warning | Xbattery convention |
-| XF003 | Component straddles an isolation barrier | Advisory | IEC 60664-1; declared domains |
 | XF004 | Placeholder footprint | Info | Xbattery convention |
 | XF005 | Sheet has no connection to the rest of the design | Error | Xbattery convention; KiCad sheet pins |
+| XF006 | Component rating still unspecified | Warning / Error | Xbattery convention |
+| XF007 | Fuse present on the power path | Info | IEC 62619 protection intent |
+| XF008 | Undeclared component bridges an isolation barrier | Error | IEC 60664-1; declared domains and crossings |
+| XF010 | Safety interlock chain is series-continuous | Error | ISO 26262 decomposition; CEA BESS two-fault tolerance |
+| XF011 | Inductive coil drive without a clamp | Warning | General protection practice |
+| XF012 | Thermistor without a bias network | Warning | General measurement practice |
+
+XF003 was retired: XF008 answers the same question and adds the declared-crossing
+whitelist, so keeping both meant shipping two rules that could disagree.
+
+### Pass, violation, not evaluable
+
+A rule reports one of three things. A **violation** is a defect. A **pass** is a
+positive result worth stating — XF010 prints the interlock chain it traced, which
+is what a reviewer actually wants to see. **Not evaluable** means the rule could
+not run and says why, so silence is never mistaken for success.
 
 Every rule cites where its criterion comes from, and a test asserts that it
 does. A rule nobody can trace to a source is a rule nobody can argue with,

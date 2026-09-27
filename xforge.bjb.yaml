@@ -37,6 +37,15 @@ domains:
 #   Power_Supply     - spans both by definition
 #   AC_Sense         - mains-derived, almost certainly its own domain
 
+# Parts that are allowed to span two domains, because crossing the barrier
+# is their job. Each one is a recorded engineering decision; confirm the rated
+# isolation voltage covers the working voltage before relying on it.
+crossings:
+  - U903    # ISO1050DUB - isolated CAN transceiver
+  - Q2      # APC-817C1-SL - optocoupler, AC sense
+  - PS1     # ITR0312S12 - isolated DC-DC converter
+  - T1      # HM2103NLT - TPL isolation transformer
+
 # Single-pin nets that are intentional. Nothing is listed yet: on RevC every
 # dangling net traces back to the two sheets caught by XF005, so suppressing
 # them now would hide the defect rather than tune the rule.

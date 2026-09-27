@@ -60,6 +60,10 @@ class Config:
     global_power_nets: list[str] = field(
         default_factory=lambda: list(DEFAULT_GLOBAL_POWER_NETS)
     )
+    # Parts allowed to span two domains: refs or fnmatch patterns on the
+    # ref, e.g. ["U903", "PS*"]. Declaring one is a recorded engineering
+    # decision, which is the point.
+    crossings: list[str] = field(default_factory=list)
     disabled_rules: set[str] = field(default_factory=set)
     severity_overrides: dict[str, Severity] = field(default_factory=dict)
     # Rules allowed to fail CI. Empty means advisory-only, which is the
@@ -87,6 +91,7 @@ class Config:
                 for i, d in enumerate(raw.get("domains", []) or [])
             ],
             expected_dangling=list(raw.get("expected_dangling", []) or []),
+            crossings=list(raw.get("crossings", []) or []),
             global_power_nets=list(
                 raw.get("global_power_nets", DEFAULT_GLOBAL_POWER_NETS)
             ),
@@ -104,6 +109,19 @@ class Config:
             fnmatchcase(net_name.upper(), p.upper()) or fnmatchcase(leaf, p.upper())
             for p in self.expected_dangling
         )
+
+    def is_declared_crossing(self, ref: str, component=None) -> bool:
+        """Has this part been declared as an intentional barrier crossing?"""
+        if any(fnmatchcase(ref.upper(), p.upper()) for p in self.crossings):
+            return True
+        if component is not None:
+            for attr in ("value", "library_part"):
+                val = getattr(component, attr, None)
+                if val and any(
+                    fnmatchcase(val.upper(), p.upper()) for p in self.crossings
+                ):
+                    return True
+        return False
 
     def is_global_power(self, leaf_name: str) -> bool:
         return any(

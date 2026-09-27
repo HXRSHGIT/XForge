@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Sequence
 
 from xforge.model import Design
-from xforge.rules.base import Finding, Severity, registry
+from xforge.rules.base import Finding, Severity, Status, registry
 
 _CSS = """
 :root{--bg:#f6f7f5;--panel:#fff;--ink:#1b2126;--muted:#5a656a;--line:#d4dad6;
@@ -38,11 +38,13 @@ th{background:var(--head);font-weight:600}
 border-radius:8px;padding:12px 16px;margin:10px 0}
 .f.ERROR{border-left-color:var(--err)}.f.WARNING{border-left-color:var(--warn)}
 .f.ADVISORY{border-left-color:var(--adv)}.f.INFO{border-left-color:var(--info)}
+.f.PASS{border-left-color:var(--accent)}.f.BLOCKED{border-left-color:var(--muted)}
 .f h3{margin:0 0 4px;font-size:16px}
 .pill{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.06em;
 padding:2px 7px;border-radius:4px;margin-right:8px;vertical-align:2px;color:#fff}
 .pill.ERROR{background:var(--err)}.pill.WARNING{background:var(--warn)}
 .pill.ADVISORY{background:var(--adv)}.pill.INFO{background:var(--info)}
+.pill.PASS{background:var(--accent)}.pill.BLOCKED{background:var(--muted)}
 .meta{font-size:12px;color:var(--muted);margin-top:6px}
 .subj{font:12.5px/1.6 Consolas,ui-monospace,monospace;background:var(--code);
 border-radius:6px;padding:8px 10px;margin-top:8px}
@@ -75,6 +77,7 @@ def to_json(design: Design, findings: Sequence[Finding], path: Path) -> None:
                 "detail": f.detail,
                 "subjects": f.subjects,
                 "confidence": f.confidence,
+                "status": f.status.value,
             }
             for f in findings
         ],
@@ -86,7 +89,10 @@ def to_html(design: Design, findings: Sequence[Finding], path: Path) -> None:
     """Single-file HTML report; opens identically anywhere, no assets."""
     e = html.escape
     rules = registry()
-    counts = {s: sum(1 for f in findings if f.severity is s) for s in Severity}
+    violations = [f for f in findings if f.status is Status.VIOLATION]
+    blocked = [f for f in findings if f.status is Status.BLOCKED]
+    passed = [f for f in findings if f.status is Status.PASS]
+    counts = {s: sum(1 for f in violations if f.severity is s) for s in Severity}
     census = design.census()
 
     cards = "".join(
@@ -94,11 +100,12 @@ def to_html(design: Design, findings: Sequence[Finding], path: Path) -> None:
         f'<div class="l">{s.label}</div></div>'
         for s in (Severity.ERROR, Severity.WARNING, Severity.ADVISORY, Severity.INFO)
     ) + "".join(
-        f'<div class="card"><div class="n">{v}</div><div class="l">{k.replace("_", " ")}</div></div>'
+        f'<div class="card"><div class="n">{v}</div><div class="l">{k}</div></div>'
         for k, v in (
+            ("passed", len(passed)),
+            ("not evaluable", len(blocked)),
             ("components", census["components"]),
             ("nets", census["nets"]),
-            ("pins", census["pins"]),
         )
     )
 
@@ -110,28 +117,39 @@ def to_html(design: Design, findings: Sequence[Finding], path: Path) -> None:
         f'<div class="cards">{cards}</div>',
     ]
 
-    if not findings:
-        body.append('<div class="none">No findings. Every enabled rule passed.</div>')
-    for sev in (Severity.ERROR, Severity.WARNING, Severity.ADVISORY, Severity.INFO):
-        group = [f for f in findings if f.severity is sev]
+    def render(group, heading):
         if not group:
-            continue
-        body.append(f"<h2>{sev.label} &mdash; {len(group)}</h2>")
+            return
+        body.append(f"<h2>{heading} &mdash; {len(group)}</h2>")
         for f in group:
             rule = rules.get(f.rule_id)
+            sev = f.severity
+            css = "PASS" if f.status is Status.PASS else (
+                "BLOCKED" if f.status is Status.BLOCKED else sev.name
+            )
             subj = ""
             if f.subjects:
                 subj = '<div class="subj">' + "".join(
                     f"<div>{e(s)}</div>" for s in f.subjects
                 ) + "</div>"
             body.append(
-                f'<div class="f {sev.name}">'
-                f'<h3><span class="pill {sev.name}">{f.rule_id}</span>{e(f.summary)}</h3>'
+                f'<div class="f {css}">'
+                f'<h3><span class="pill {css}">{f.rule_id}</span>{e(f.summary)}</h3>'
                 f"<div>{e(f.detail)}</div>{subj}"
                 f'<div class="meta">{e(rule.title if rule else "")} &middot; '
                 f'source: {e(rule.source if rule else "?")} &middot; '
                 f"confidence: {e(f.confidence)}</div></div>"
             )
+
+    if not violations:
+        body.append(
+            '<div class="none">No violations. Read this alongside the '
+            "not-evaluable list below.</div>"
+        )
+    for sev in (Severity.ERROR, Severity.WARNING, Severity.ADVISORY, Severity.INFO):
+        render([f for f in violations if f.severity is sev], sev.label)
+    render(blocked, "Not evaluable")
+    render(passed, "Passed")
 
     body.append("<h2>Rules run</h2><div class='tbl'><table>")
     body.append("<tr><th>ID</th><th>Rule</th><th>Default</th><th>Source</th></tr>")

@@ -1,0 +1,254 @@
+"""Safety-path rules for battery junction boxes.
+
+These encode the review a BMS engineer does by eye: does the interlock chain
+actually run in series, is there a clamp across every coil, can a thermistor
+be read at all. None of them is a numbered clause - they are established
+practice - so each reports what it found rather than asserting a threshold,
+and says explicitly when it could not evaluate.
+"""
+
+from __future__ import annotations
+
+from typing import Iterable, TYPE_CHECKING
+
+from xforge.rules.base import Finding, Severity, Status, rule
+
+if TYPE_CHECKING:
+    from xforge.config import Config
+    from xforge.model import Design, Net
+
+# Only nets that are the coil itself. An earlier version also matched
+# "*CONTACTOR*" and "*RELAY*", which swept in TEMP_CONTACTOR (a thermistor
+# sense line) and CONTACTOR_CMD (a logic command into a driver). Neither is
+# an inductive load and neither wants a clamp.
+_COIL_PATTERNS = ("*COIL*", "*SOLENOID*")
+
+
+def _leaf(name: str) -> str:
+    return name.rsplit("/", 1)[-1]
+
+
+@rule(
+    id="XF010",
+    title="Safety interlock chain is series-continuous",
+    source=(
+        "ISO 26262 decomposition practice; CEA BESS two-fault tolerance; "
+        "Xbattery convention"
+    ),
+    severity=Severity.ERROR,
+)
+def interlock_chain(design: "Design", config: "Config") -> Iterable[Finding]:
+    """Trace the normally-closed interlock switches and check they are in series.
+
+    A hardware interlock only works if breaking any one contact removes power
+    from the actuator. That means the switches form a chain in which every
+    intermediate net touches exactly two switch poles - anything else is a
+    bypass. This rule discovers the chain rather than being told it, and
+    reports the chain it found so a reviewer can confirm the order.
+    """
+    switches = [c for c in design.components if c.is_kind("switch")]
+    if not switches:
+        yield Finding(
+            rule_id="XF010",
+            severity=Severity.INFO,
+            summary="No interlock switches found",
+            detail=(
+                "No component classifies as a switch, so there is no interlock "
+                "chain to check. If the interlock is external and represented "
+                "by a connector, this rule cannot see it."
+            ),
+            status=Status.BLOCKED,
+            confidence="verified",
+        )
+        return
+
+    refs = {c.ref for c in switches}
+    # Nets that join exactly two switches are the links of the chain.
+    links: list[tuple[str, str, Net]] = []
+    stubs: list[Net] = []
+    for net in design.nets:
+        on_chain = sorted(r for r in net.refs if r in refs)
+        if len(on_chain) == 2 and net.degree == 2:
+            links.append((on_chain[0], on_chain[1], net))
+        elif len(on_chain) == 2:
+            # Two switches plus something else: a tap off the chain.
+            stubs.append(net)
+
+    chained = {r for a, b, _ in links for r in (a, b)}
+    # A switch sitting on a tapped link is already reported by the stub
+    # finding below. Reporting it again as an orphan describes one cause
+    # twice and makes the chain look more broken than it is.
+    on_stub = {r for n in stubs for r in n.refs if r in refs}
+    orphans = sorted(refs - chained - on_stub)
+
+    chain_desc = [
+        f"{a} --[{_leaf(n.name)}]-- {b}" for a, b, n in sorted(links, key=lambda x: x[2].name)
+    ]
+
+    if links and not orphans and not stubs:
+        yield Finding(
+            rule_id="XF010",
+            severity=Severity.INFO,
+            summary=(
+                f"Interlock chain is series-continuous across "
+                f"{len(chained)} switches"
+            ),
+            detail=(
+                "Every interlock switch sits on a link net shared with exactly "
+                "one other switch, and no link carries a third connection. "
+                "Breaking any one contact breaks the chain. Confirm the order "
+                "below matches the intended sequence."
+            ),
+            subjects=chain_desc
+            + [f"{c.ref}: {c.value}" for c in sorted(switches, key=lambda c: c.ref)],
+            status=Status.PASS,
+            confidence="verified",
+        )
+        return
+
+    if stubs:
+        yield Finding(
+            rule_id="XF010",
+            severity=Severity.ERROR,
+            summary=(
+                f"Interlock chain has {len(stubs)} link net(s) with a third "
+                "connection"
+            ),
+            detail=(
+                "A net between two interlock switches also reaches something "
+                "else. Anything tapping the chain between contacts can bypass "
+                "the contacts upstream of it. Confirm each tap is a monitor "
+                "with no current path around the switch."
+            ),
+            subjects=[
+                f"{_leaf(n.name)}: {', '.join(str(p) for p in n.pins)}" for n in stubs
+            ],
+            confidence="needs-review",
+        )
+
+    if orphans:
+        yield Finding(
+            rule_id="XF010",
+            severity=Severity.ERROR,
+            summary=f"{len(orphans)} interlock switch(es) not in the chain",
+            detail=(
+                "These switches share no two-pin net with another interlock "
+                "switch, so they are not in series with the chain. Either they "
+                "belong to a separate loop, or the chain is broken here."
+            ),
+            subjects=[
+                f"{r}: {(design.component(r).value if design.component(r) else '?')}"
+                for r in orphans
+            ],
+            confidence="verified",
+        )
+
+
+@rule(
+    id="XF011",
+    title="Inductive coil drive without a clamp",
+    source="General protection practice; TE Connectivity contactor guidance",
+    severity=Severity.WARNING,
+)
+def coil_clamp(design: "Design", config: "Config") -> Iterable[Finding]:
+    """A coil-drive net with no diode, TVS or zener on it.
+
+    Switching an inductive load without a clamp produces hundreds of volts
+    across the driver. When the contactor is external and reaches the board
+    through a connector - as on the BJB - the clamp may legitimately live
+    inside the contactor, so this reports rather than fails, and asks for the
+    datasheet confirmation.
+    """
+    coil_nets = design.nets_matching(*_COIL_PATTERNS)
+    if not coil_nets:
+        return
+
+    for net in sorted(coil_nets, key=lambda n: n.name):
+        clamps = [
+            r
+            for r in sorted(net.refs)
+            if (c := design.component(r)) is not None and c.is_clamp
+        ]
+        if clamps:
+            continue
+        external = [
+            r
+            for r in sorted(net.refs)
+            if (c := design.component(r)) is not None and c.is_kind("connector")
+        ]
+        yield Finding(
+            rule_id="XF011",
+            severity=Severity.WARNING,
+            summary=f"Coil net '{_leaf(net.name)}' has no clamp element",
+            detail=(
+                "No diode, TVS or zener sits on this net. "
+                + (
+                    "The coil reaches the board through a connector, so the "
+                    "clamp may be inside the contactor - confirm against its "
+                    "datasheet and record it, or add one on the board."
+                    if external
+                    else "Add a flyback path across the coil."
+                )
+                + " Note the trade-off: a plain flyback diode slows contactor "
+                "opening and can reduce breaking capacity."
+            ),
+            subjects=[net.name]
+            + [f"{p} ({(design.component(p.ref).value if design.component(p.ref) else '?')})" for p in net.pins],
+            confidence="needs-review",
+        )
+
+
+@rule(
+    id="XF012",
+    title="Thermistor without a bias network",
+    source="General measurement practice",
+    severity=Severity.WARNING,
+)
+def thermistor_bias(design: "Design", config: "Config") -> Iterable[Finding]:
+    """An NTC with no resistor on either terminal.
+
+    A thermistor is only readable as part of a divider or a current-biased
+    network. If neither of its nets reaches a resistor, nothing can measure
+    it - unless the bias lives off-board or on a sheet this netlist does not
+    connect, which is reported rather than assumed.
+    """
+    for comp in sorted(design.components, key=lambda c: c.ref):
+        if not comp.is_kind("thermistor"):
+            continue
+        nets = design.nets_of.get(comp.ref, [])
+        if not nets:
+            continue
+        biased = False
+        reaches_connector = False
+        for net in nets:
+            for r in net.refs:
+                if r == comp.ref:
+                    continue
+                other = design.component(r)
+                if other is None:
+                    continue
+                if other.is_kind("resistor"):
+                    biased = True
+                if other.is_kind("connector"):
+                    reaches_connector = True
+        if biased:
+            continue
+        yield Finding(
+            rule_id="XF012",
+            severity=Severity.WARNING,
+            summary=f"{comp.ref} ({comp.value}) has no bias resistor",
+            detail=(
+                "Neither terminal net reaches a resistor, so this thermistor "
+                "cannot be read as a divider. "
+                + (
+                    "It does reach a connector, so the bias may be off-board "
+                    "or on a sheet not connected in this netlist - confirm "
+                    "which, and record it."
+                    if reaches_connector
+                    else "Add the bias network."
+                )
+            ),
+            subjects=[comp.ref]
+            + [f"{_leaf(n.name)} (deg={n.degree})" for n in nets],
+            confidence="needs-review",
+        )

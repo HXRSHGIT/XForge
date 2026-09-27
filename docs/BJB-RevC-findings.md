@@ -122,10 +122,10 @@ match `BUS_V_SENSE` and `PACK_V_SENSE`, which are ADC inputs on U900 — the
 low-voltage end of a divider, not bus conductors. Sheet scope is the reliable
 signal in a hierarchical design.
 
-XF003 (barrier straddle) reports nothing on RevC, correctly: with both sheets
+XF008 (barrier crossing) reports nothing on RevC, correctly: with both sheets
 orphaned, nothing crosses a domain boundary because nothing crosses anything.
-It becomes meaningful once the sheet pins are wired — which is a useful property
-to keep in mind when reading a clean XF003 result.
+It becomes meaningful once the sheet pins are wired — which is worth keeping in
+mind when reading a clean isolation result.
 
 ## Open questions
 
@@ -134,3 +134,102 @@ to keep in mind when reading a clean XF003 result.
 2. **Domain assignment for `MC33772C`, `SC400A`, `TPL Communication`,
    `Power_Supply` and `AC_Sense`.** Deliberately left unassigned rather than
    guessed — see the comments in `xforge.bjb.yaml`.
+
+---
+
+# Second pass — safety-path rules (week 3)
+
+Re-run after adding XF006–XF012. The hierarchy defect above is unchanged; these
+are the additional findings.
+
+## Summary
+
+| | |
+|---|---|
+| Errors | 15 — 11 split signals, 2 orphaned sheets, **2 unspecified ratings** |
+| Warnings | 56 — 47 dangling nets, **6 unclamped coil nets**, **3 unbiased thermistors** |
+| Passed | 2 |
+| Not evaluable | 0 |
+
+## New errors — safety-critical parts with no rating
+
+Two parts on the HV Power-Path & Safety sheet carry placeholder values:
+
+| Ref | Value | Why it is an error rather than a warning |
+|---|---|---|
+| `F900` | `Fuse (I/V/I2t rating TBD)` | A fuse's rating *is* its protective function. Until I²t is chosen, nothing about the short-circuit behaviour of this design can be evaluated. |
+| `R902` | `PRECHARGE_R (ohms/energy TBD)` | Precharge resistance sets both the inrush current and the energy the resistor absorbs per event. `3RC` against the downstream bulk capacitance is the sizing constraint, and the pulse rating has to exceed `½CV²` per precharge cycle. |
+
+Both are honest notes by the designer. Both would survive into a build.
+
+## Passed — worth stating
+
+**XF010: the interlock chain is series-continuous across 4 switches.** Traced
+from the netlist, not declared:
+
+```
+SW900 --[HVIL_OK]--        SW901
+SW901 --[ESTOP_OK]--       SW902
+SW902 --[SAFETY_LOOP_OK]-- SW903
+
+SW900  HVIL (NC)
+SW901  E_STOP / crash loop (NC)
+SW902  MSD / cover loop (NC)
+SW903  SC trip inhibit contact (NC)
+```
+
+Coil supply reaches `COIL_ENABLE_HW` only through all four normally-closed
+contacts in series, and no link net carries a third connection that could bypass
+a contact. Breaking any one opens the chain. **This part of the design is
+correct** — confirm the order matches the intended sequence.
+
+**XF008: nothing bridges the declared domains.** Read this together with XF005:
+with both sheets orphaned, nothing crosses a barrier because nothing crosses
+anything. It will mean something once the sheet pins are wired.
+
+## New warnings
+
+**Six coil nets with no clamp element** — `MAIN_COIL-`, `PRECHARGE_COIL-`,
+`COIL_SUPPLY+`, `COIL_SUPPLY+_RET`, `COIL_RETURN`, `COIL_ENABLE_HW`. The
+contactors are external and reach the board through `J915`/`J916`, so the clamp
+may well be inside the contactor. That needs confirming against its datasheet and
+recording, rather than assuming. Worth noting the trade-off either way: a plain
+flyback diode slows contactor opening and can reduce breaking capacity.
+
+**Three thermistors with no bias resistor** — `TH900` (NTC_SHUNT), `TH901`
+(NTC_PRECHARGE), `TH902` (NTC_CONTACTOR). Each has one terminal on a `TEMP_*`
+net to connector `J914` and the other on `GND`. No divider resistor appears on
+either net, so as netlisted these cannot be read. The bias is presumably intended
+on the Control sheet — which is the sheet XF005 reports as orphaned.
+
+## Isolation crossings now declared
+
+Four parts are recorded in `xforge.bjb.yaml` as intentional barrier crossings:
+
+| Ref | Part | Role |
+|---|---|---|
+| `U903` | ISO1050DUB | Isolated CAN transceiver |
+| `Q2` | APC-817C1-SL | Optocoupler, AC sense |
+| `PS1` | ITR0312S12 | Isolated DC-DC converter |
+| `T1` | HM2103NLT | TPL isolation transformer |
+
+Declaring one is a recorded decision. Each still needs its rated isolation
+voltage checked against the working voltage once that is known.
+
+## Two false positives found and fixed
+
+Worth recording, because both were the rule engine being confidently wrong:
+
+1. **`J911` read as a switch, `J914` as a thermistor.** Classification was
+   matching against the free-text `description` field — *"Protected HV port to
+   rated external **switch**gear"* and *"Power-path **NTC** harness"*. Both are
+   connectors. Fixed: descriptions are prose written for humans and are no longer
+   used for classification, and an unambiguous designator prefix (`J`, `P`, `TP`,
+   `H`) now settles what a part is.
+
+2. **`TEMP_CONTACTOR` and `CONTACTOR_CMD` flagged as unclamped coils.** The coil
+   pattern list included `*CONTACTOR*`, which swept in a thermistor sense line and
+   a logic command. Neither is an inductive load. Narrowed to `*COIL*` and
+   `*SOLENOID*`.
+
+Both now have regression tests.
