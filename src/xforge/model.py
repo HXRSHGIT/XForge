@@ -58,6 +58,82 @@ class Component:
         fp = (self.footprint or "").upper()
         return not fp or "TBD" in fp or fp.endswith(":")
 
+
+    # ── rough part classification ──────────────────────────────────
+    # Netlists carry no component *kind*, only a value string, a library
+    # reference and a designator. Rules need "is this a diode" without
+    # every rule reinventing the guess, so the guess lives here once.
+
+    _KINDS = {
+        "diode": ("diode", "schottky", "pmeg", "1n4", "bav", "rectif"),
+        "tvs": ("tvs", "smdj", "smbj", "smaj", "pesd", "esd", "transil"),
+        "zener": ("zener", "bzx", "mmsz"),
+        "thermistor": ("thermistor", "ntc", "ptc"),
+        "switch": ("sw_", "switch", "estop", "e_stop", "interlock"),
+        "fuse": ("fuse",),
+        "connector": ("conn_", "connector", "header", "tsw-", "molex"),
+        "optocoupler": ("opto", "817", "iso7", "tlp"),
+        "isolator": ("iso1", "iso7", "adum", "si86", "isolat"),
+        "regulator": ("regulator", "ldo", "tps7", "lm1", "buck"),
+        "mcu": ("stm32", "atmega", "esp32", "mcu", "rp2040"),
+    }
+
+    _PREFIX_KINDS = {
+        "D": "diode", "Z": "zener", "TH": "thermistor", "RT": "thermistor",
+        "SW": "switch", "F": "fuse", "J": "connector", "P": "connector",
+        "R": "resistor", "C": "capacitor", "L": "inductor", "TP": "testpoint",
+        "H": "mechanical", "Q": "transistor", "BR": "bridge", "T": "transformer",
+    }
+
+    # Prefixes where the designator settles what the part is. A connector is
+    # a connector even when its description mentions switchgear - which is
+    # exactly how J911 ("Protected HV port to rated external switchgear")
+    # and J914 ("Power-path NTC harness") were first misread as a switch and
+    # a thermistor.
+    _AUTHORITATIVE_PREFIXES = {"J", "P", "TP", "H"}
+
+    def kinds(self) -> set[str]:
+        """Best-effort classification of this part, e.g. {'diode', 'tvs'}.
+
+        Deliberately a set: a PESD5V0S1BA is both a diode and a TVS, and a
+        rule asking "is there a clamp here" should match either.
+        """
+        prefix = self.designator_prefix
+        by_prefix = self._PREFIX_KINDS.get(prefix)
+
+        if prefix in self._AUTHORITATIVE_PREFIXES:
+            return {by_prefix} if by_prefix else set()
+
+        # `description` is deliberately excluded: it is prose written for a
+        # human, and substring-matching it produces confident nonsense.
+        found: set[str] = set()
+        blob = " ".join(x for x in (self.value, self.library_part) if x).lower()
+        for kind, needles in self._KINDS.items():
+            if any(n in blob for n in needles):
+                found.add(kind)
+        if by_prefix:
+            found.add(by_prefix)
+        if found & {"tvs", "zener"}:
+            found.add("diode")
+        return found
+
+    def is_kind(self, *kinds: str) -> bool:
+        mine = self.kinds()
+        return any(k in mine for k in kinds)
+
+    @property
+    def is_clamp(self) -> bool:
+        """Could this part clamp an inductive kickback or a transient?"""
+        return self.is_kind("diode", "tvs", "zener")
+
+    @property
+    def has_unspecified_rating(self) -> bool:
+        """The value string admits the rating is not decided yet."""
+        blob = (self.value or "").upper()
+        return any(
+            marker in blob for marker in ("TBD", "TODO", "???", "XXX", "FIXME")
+        )
+
     def __str__(self) -> str:
         return self.ref
 
@@ -78,6 +154,10 @@ class Net:
     def refs(self) -> set[str]:
         """Reference designators of every component touching this net."""
         return {p.ref for p in self.pins}
+
+    def pins_of(self, ref: str) -> list[Pin]:
+        """The pins that component *ref* has on this net."""
+        return [p for p in self.pins if p.ref == ref]
 
     def __str__(self) -> str:
         return self.name

@@ -7,7 +7,7 @@ is a rule nobody can argue with, which is worse than no rule at all.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import IntEnum
+from enum import IntEnum, StrEnum
 from typing import Callable, Iterable, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -26,6 +26,19 @@ class Severity(IntEnum):
         return self.name.title()
 
 
+class Status(StrEnum):
+    """What kind of statement a finding is making."""
+
+    VIOLATION = "violation"  # the design breaks the rule
+    BLOCKED = "not-evaluable"  # the rule could not run; says why
+    PASS = "pass"  # the rule ran and the design satisfies it
+
+    @property
+    def label(self) -> str:
+        return {"violation": "Violation", "not-evaluable": "Not evaluable",
+                "pass": "Pass"}[self.value]
+
+
 @dataclass
 class Finding:
     """One thing a rule wants a human to look at."""
@@ -36,9 +49,11 @@ class Finding:
     detail: str = ""  # why it matters / what to check
     subjects: list[str] = field(default_factory=list)  # nets, refs, pins
     confidence: str = "verified"  # verified | probable | needs-review
+    status: Status = Status.VIOLATION
 
     def sort_key(self):
-        return (-int(self.severity), self.rule_id, self.summary)
+        order = {Status.VIOLATION: 0, Status.BLOCKED: 1, Status.PASS: 2}
+        return (order[self.status], -int(self.severity), self.rule_id, self.summary)
 
 
 @dataclass(frozen=True)
@@ -84,7 +99,13 @@ def rule(
 def registry() -> dict[str, Rule]:
     """All registered rules, id -> Rule."""
     # Importing for side effects: each module registers its rules on import.
-    from xforge.rules import connectivity, hierarchy  # noqa: F401
+    from xforge.rules import (  # noqa: F401
+        components,
+        connectivity,
+        hierarchy,
+        isolation,
+        safety,
+    )
 
     return dict(_REGISTRY)
 
@@ -98,7 +119,8 @@ def run(design: "Design", config: "Config") -> list[Finding]:
         for f in r.check(design, config):
             # A config override wins over the rule's default.
             if (override := config.severity_overrides.get(rid)) is not None:
-                f.severity = override
+                if f.status is Status.VIOLATION:
+                    f.severity = override
             findings.append(f)
     findings.sort(key=lambda f: f.sort_key())
     return findings

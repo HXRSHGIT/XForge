@@ -14,7 +14,7 @@ from xforge import __version__
 from xforge.config import Config
 from xforge.model import Design
 from xforge import readers
-from xforge.rules import Severity, registry, run
+from xforge.rules import Severity, Status, registry, run
 
 EXIT_OK = 0
 EXIT_FINDINGS = 1  # gating rules fired
@@ -50,14 +50,21 @@ def _cmd_check(args) -> int:
     config = Config.load(args.config)
     findings = run(design, config)
 
-    counts = {s: sum(1 for f in findings if f.severity is s) for s in Severity}
+    violations = [f for f in findings if f.status is Status.VIOLATION]
+    blocked = [f for f in findings if f.status is Status.BLOCKED]
+    passed = [f for f in findings if f.status is Status.PASS]
+    counts = {s: sum(1 for f in violations if f.severity is s) for s in Severity}
+
+    _MARK = {Status.VIOLATION: "", Status.BLOCKED: "?", Status.PASS: "+"}
     for f in findings:
+        if args.quiet and f.status is not Status.VIOLATION:
+            continue
         if args.quiet and f.severity < Severity.WARNING:
             continue
-        print(f"[{f.severity.label:8s}] {f.rule_id}  {f.summary}")
+        print(f"{_MARK[f.status]:1s}[{f.severity.label:8s}] {f.rule_id}  {f.summary}")
         if args.verbose:
             for s in f.subjects:
-                print(f"               {s}")
+                print(f"                {s}")
 
     print()
     print(
@@ -65,6 +72,8 @@ def _cmd_check(args) -> int:
         f"{counts[Severity.WARNING]} warning, "
         f"{counts[Severity.ADVISORY]} advisory, {counts[Severity.INFO]} info"
     )
+    if passed or blocked:
+        print(f"  {len(passed)} check(s) passed, {len(blocked)} not evaluable")
 
     if args.html:
         from xforge.report import to_html
@@ -82,7 +91,13 @@ def _cmd_check(args) -> int:
     gating = config.gating_rules
     if args.gate:
         gating = gating | {r for r, v in registry().items() if v.blocking}
-    fired = [f for f in findings if f.rule_id in gating and f.severity >= Severity.ERROR]
+    fired = [
+        f
+        for f in findings
+        if f.rule_id in gating
+        and f.status is Status.VIOLATION
+        and f.severity >= Severity.ERROR
+    ]
     if fired:
         print(f"\nFAIL: {len(fired)} finding(s) from gating rules {sorted(gating)}")
         return EXIT_FINDINGS

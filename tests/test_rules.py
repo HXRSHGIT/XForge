@@ -12,7 +12,7 @@ import pytest
 from xforge.config import Config, Domain
 from xforge.model import Component, Design, Net, Pin
 from xforge.readers import kicad_netlist
-from xforge.rules import Severity, run
+from xforge.rules import Severity, Status, run
 
 FIXTURE = Path(__file__).parent / "fixtures" / "bjb_revc.net"
 
@@ -96,7 +96,7 @@ class TestXF002Dangling:
         assert _findings(d, cfg, rule_id="XF002") == []
 
 
-class TestXF003BarrierStraddle:
+class TestXF008BarrierCrossing:
     def _cfg(self):
         return Config(
             domains=[
@@ -105,17 +105,44 @@ class TestXF003BarrierStraddle:
             ]
         )
 
-    def test_fires_on_part_in_two_domains(self):
+    def test_errors_on_undeclared_non_isolator(self):
         d = _design(
             [
                 Net("/PACK_POS", pins=[Pin("U1", "1")]),
                 Net("/CTRL_EN", pins=[Pin("U1", "8")]),
             ],
-            [Component(ref="U1", value="ACME-ISO")],
+            [Component(ref="U1", value="74HC00")],
         )
-        found = _findings(d, self._cfg(), rule_id="XF003")
+        found = [f for f in _findings(d, self._cfg(), rule_id="XF008")
+                 if f.status is Status.VIOLATION]
         assert len(found) == 1
-        assert found[0].confidence == "needs-review"
+        assert found[0].severity is Severity.ERROR
+
+    def test_declared_crossing_passes(self):
+        cfg = self._cfg()
+        cfg.crossings = ["U1"]
+        d = _design(
+            [
+                Net("/PACK_POS", pins=[Pin("U1", "1")]),
+                Net("/CTRL_EN", pins=[Pin("U1", "8")]),
+            ],
+            [Component(ref="U1", value="ISO1050DUB")],
+        )
+        found = _findings(d, cfg, rule_id="XF008")
+        assert [f.status for f in found] == [Status.PASS]
+
+    def test_recognised_isolator_is_advisory_not_error(self):
+        d = _design(
+            [
+                Net("/PACK_POS", pins=[Pin("U1", "1")]),
+                Net("/CTRL_EN", pins=[Pin("U1", "8")]),
+            ],
+            [Component(ref="U1", value="ISO1050DUB")],
+        )
+        found = [f for f in _findings(d, self._cfg(), rule_id="XF008")
+                 if f.status is Status.VIOLATION]
+        assert len(found) == 1
+        assert found[0].severity is Severity.ADVISORY
 
     def test_does_not_infer_domains_transitively(self):
         """A ground shared with an HV part must not become an HV net.
@@ -132,11 +159,14 @@ class TestXF003BarrierStraddle:
             ],
             [Component(ref="U1"), Component(ref="U2")],
         )
-        assert _findings(d, self._cfg(), rule_id="XF003") == []
+        violations = [f for f in _findings(d, self._cfg(), rule_id="XF008")
+                      if f.status is Status.VIOLATION]
+        assert violations == []
 
-    def test_silent_without_two_domains(self):
+    def test_reports_blocked_without_two_domains(self):
         d = _design([Net("/PACK_POS", pins=[Pin("U1", "1")])])
-        assert _findings(d, Config(), rule_id="XF003") == []
+        found = _findings(d, Config(), rule_id="XF008")
+        assert [f.status for f in found] == [Status.BLOCKED]
 
 
 class TestSuiteLevel:
@@ -144,14 +174,20 @@ class TestSuiteLevel:
         """Golden totals. A change here is a change in behaviour."""
         cfg = Config.load(Path(__file__).parents[1] / "xforge.bjb.yaml")
         found = run(bjb, cfg)
-        counts = {s.label: sum(1 for f in found if f.severity is s) for s in Severity}
-        # 11 XF001 splits + 2 XF005 orphaned sheets.
-        assert counts["Error"] == 13
-        assert counts["Warning"] == 47
-        # XF003 is silent on RevC by construction: with the two sheets
-        # orphaned (XF005) nothing crosses a domain boundary at all. It
-        # becomes meaningful once the sheet pins are wired.
+        violations = [f for f in found if f.status is Status.VIOLATION]
+        counts = {
+            s.label: sum(1 for f in violations if f.severity is s) for s in Severity
+        }
+        # 11 XF001 splits + 2 XF005 orphaned sheets + 2 XF006 TBD ratings.
+        assert counts["Error"] == 15
+        # 47 XF002 dangling + 6 XF011 unclamped coils + 3 XF012 thermistors.
+        assert counts["Warning"] == 56
+        # XF008 is silent on RevC by construction: with both sheets orphaned
+        # (XF005) nothing crosses a domain boundary because nothing crosses
+        # anything. It becomes meaningful once the sheet pins are wired.
         assert counts["Advisory"] == 0
+        # XF008 "nothing bridges the domains" and XF010 "chain continuous".
+        assert sum(1 for f in found if f.status is Status.PASS) == 2
 
     def test_every_rule_cites_a_source(self):
         from xforge.rules import registry
