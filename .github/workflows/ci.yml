@@ -1,0 +1,36 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: python -m pip install -e ".[dev]"
+      - run: python -m pytest
+
+  check-bjb:
+    # Runs the checker against the tracked BJB fixture on every push, so a
+    # change in finding counts shows up as a diff rather than a surprise.
+    # Advisory: --gate is deliberately NOT passed yet. See docs/enforcement.md.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -e .
+      - run: xforge check tests/fixtures/bjb_revc.net -c xforge.bjb.yaml --json findings.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bjb-findings
+          path: findings.json

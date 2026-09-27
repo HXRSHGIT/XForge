@@ -84,7 +84,7 @@ def rule(
 def registry() -> dict[str, Rule]:
     """All registered rules, id -> Rule."""
     # Importing for side effects: each module registers its rules on import.
-    from xforge.rules import connectivity  # noqa: F401
+    from xforge.rules import connectivity, hierarchy  # noqa: F401
 
     return dict(_REGISTRY)
 

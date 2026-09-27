@@ -145,12 +145,67 @@ class TestSuiteLevel:
         cfg = Config.load(Path(__file__).parents[1] / "xforge.bjb.yaml")
         found = run(bjb, cfg)
         counts = {s.label: sum(1 for f in found if f.severity is s) for s in Severity}
-        assert counts["Error"] == 11
+        # 11 XF001 splits + 2 XF005 orphaned sheets.
+        assert counts["Error"] == 13
         assert counts["Warning"] == 47
-        assert counts["Advisory"] == 2
+        # XF003 is silent on RevC by construction: with the two sheets
+        # orphaned (XF005) nothing crosses a domain boundary at all. It
+        # becomes meaningful once the sheet pins are wired.
+        assert counts["Advisory"] == 0
 
     def test_every_rule_cites_a_source(self):
         from xforge.rules import registry
 
         for rid, r in registry().items():
             assert r.source.strip(), f"{rid} has no cited source"
+
+
+class TestXF005OrphanedSheet:
+    def test_fires_on_sheet_with_no_external_net(self):
+        d = _design(
+            [
+                Net("/Alone/SIG", pins=[Pin("U9", "1"), Pin("R9", "1")]),
+                Net("/Main/OTHER", pins=[Pin("U1", "1"), Pin("U2", "1")]),
+            ],
+            [
+                Component(ref="U9", sheet="Alone"),
+                Component(ref="R9", sheet="Alone"),
+                Component(ref="U1", sheet="Main"),
+                Component(ref="U2", sheet="Main"),
+            ],
+        )
+        found = _findings(d, rule_id="XF005")
+        assert len(found) == 2  # neither sheet touches the other
+        assert {f.summary.split("'")[1] for f in found} == {"Alone", "Main"}
+
+    def test_silent_when_sheets_share_a_net(self):
+        d = _design(
+            [Net("SHARED", pins=[Pin("U9", "1"), Pin("U1", "1")])],
+            [Component(ref="U9", sheet="A"), Component(ref="U1", sheet="B")],
+        )
+        assert _findings(d, rule_id="XF005") == []
+
+    def test_mechanical_only_sheet_is_allowed_to_float(self):
+        d = _design(
+            [
+                Net("/Mech/NC", pins=[Pin("H1", "1")]),
+                Net("/Main/A", pins=[Pin("U1", "1"), Pin("U2", "1")]),
+                Net("/Main/B", pins=[Pin("U1", "2"), Pin("U3", "1")]),
+            ],
+            [
+                Component(ref="H1", sheet="Mech"),
+                Component(ref="U1", sheet="Main"),
+                Component(ref="U2", sheet="Main"),
+                Component(ref="U3", sheet="Main"),
+            ],
+        )
+        sheets = {f.summary.split("'")[1] for f in _findings(d, rule_id="XF005")}
+        assert "Mech" not in sheets
+
+    def test_golden_on_bjb(self, bjb):
+        """RevC orphans exactly the two sheets added on 24 Sep."""
+        found = _findings(bjb, rule_id="XF005")
+        assert {f.summary.split("'")[1] for f in found} == {
+            "Control, Diagnostics & IoT",
+            "HV Power-Path & Safety",
+        }

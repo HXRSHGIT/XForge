@@ -1,32 +1,49 @@
 # xforge config for the BJB (Battery Junction Box), RevC.
-# Domains and expectations are declared here because a netlist cannot state them.
+#
+# Source design: NXP RDBESS772BJBEVB (MC33772C) redrawn in KiCad as
+# BJB_RealSchematic_RevC, with an added SC400A short-circuit block.
+#
+# Domains are declared BY SHEET, not by net-name pattern. An earlier attempt
+# used patterns like "BUS_*" and "PACK_*"; checking the netlist showed those
+# match BUS_V_SENSE and PACK_V_SENSE, which are MCU ADC inputs on U900 - the
+# low-voltage end of a divider, not bus conductors. Sheet scope is the
+# reliable signal in a hierarchical design.
 project: "BJB RevC - Battery Junction Box"
 
-# Galvanic domains. Working voltages are placeholders until Harsh confirms
-# the pack voltage class for this build; XF003 stays advisory until then.
 domains:
   - name: HV
-    working_voltage: null        # TODO: confirm (51.2 V / 110 V / 800 V class)
-    description: "Pack side: contactors, shunt, fuse, bus sense"
-    nets:
-      - "PACK_*"
-      - "LOAD_*"
-      - "MAIN_POS"
-      - "PRECHARGE_POS"
-      - "PRECHARGE_NEG"
-      - "BUS_*"
-  - name: LV
-    working_voltage: 12.0
-    description: "Control side: MCU, IoT, coil drive logic, 5 V rails"
-    nets:
-      - "SC_5V"
-      - "*_MON"
-      - "*_CMD"
-      - "COIL_ENABLE_HW"
+    # Working voltage is NOT yet known for this build. It depends on the
+    # string configuration this BJB is specified for, which is not derivable
+    # from the netlist. XF003 stays advisory until this is filled in AND the
+    # IEC 60664-1 tables are available - see docs/standards.md.
+    working_voltage: null   # TODO(Harsh): pack voltage class for this build
+    description: "Pack power path: contactors, precharge, fuse, shunt, HV sense"
+    sheets:
+      - "HV Power-Path & Safety"
+      - "HV Switches"
+      - "HV Sensing Lines"
 
-# Single-pin nets that are intentional. Add to this list only after review.
+  - name: LV
+    working_voltage: 12.0   # coil supply / logic side; confirm against PSU sheet
+    description: "Control side: MCU, diagnostics, IoT, coil command logic"
+    sheets:
+      - "Control, Diagnostics & IoT"
+
+# Deliberately unassigned, because assigning them wrongly is worse than
+# leaving them out:
+#   MC33772C         - the AFE straddles by design (cell taps HV, TPL to LV)
+#   SC400A           - sits on the shunt; HV-adjacent, needs Harsh's call
+#   TPL Communication - transformer-isolated physical layer
+#   Power_Supply     - spans both by definition
+#   AC_Sense         - mains-derived, almost certainly its own domain
+
+# Single-pin nets that are intentional. Nothing is listed yet: on RevC every
+# dangling net traces back to the two sheets caught by XF005, so suppressing
+# them now would hide the defect rather than tune the rule.
 expected_dangling: []
 
-# Advisory-only for now. Rules move in here once their false-positive rate
-# on real boards is known. Target: XF001 gating from week 6.
+# Advisory-only. Rules graduate to gating once their false-positive rate on
+# real boards is known. XF001 and XF005 are the first candidates - both are
+# currently firing on a verified, reproducible defect with zero false
+# positives, so they are the ones to promote first.
 gating_rules: []

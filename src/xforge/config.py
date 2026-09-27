@@ -28,8 +28,14 @@ class Domain:
 
     name: str
     nets: list[str] = field(default_factory=list)  # fnmatch patterns
+    sheets: list[str] = field(default_factory=list)  # fnmatch on sheet name
     working_voltage: float | None = None  # volts
     description: str = ""
+
+    def matches_sheet(self, sheet_name: str | None) -> bool:
+        if not sheet_name or not self.sheets:
+            return False
+        return any(fnmatchcase(sheet_name.upper(), p.upper()) for p in self.sheets)
 
     def matches(self, net_name: str) -> bool:
         leaf = net_name.rsplit("/", 1)[-1].upper()
@@ -73,7 +79,8 @@ class Config:
             domains=[
                 Domain(
                     name=d.get("name", f"domain{i}"),
-                    nets=list(d.get("nets", [])),
+                    nets=list(d.get("nets", []) or []),
+                    sheets=list(d.get("sheets", []) or []),
                     working_voltage=d.get("working_voltage"),
                     description=d.get("description", ""),
                 )
@@ -104,8 +111,17 @@ class Config:
         )
 
     def domain_of(self, net_name: str) -> Domain | None:
+        """Domain of a net, by explicit net pattern first, then by sheet.
+
+        Net patterns win so a specific signal can be pulled out of the sheet
+        it happens to be drawn on.
+        """
         for d in self.domains:
             if d.matches(net_name):
+                return d
+        sheet = net_name.strip("/").rsplit("/", 1)[0] if "/" in net_name.strip("/") else None
+        for d in self.domains:
+            if d.matches_sheet(sheet):
                 return d
         return None
 

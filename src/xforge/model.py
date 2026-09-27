@@ -119,14 +119,36 @@ class Design:
         return self.by_ref.get(ref)
 
     def nets_matching(self, *patterns: str) -> list[Net]:
-        """Nets whose name matches any of the given fnmatch patterns."""
+        """Nets whose full name or leaf name matches any fnmatch pattern.
+
+        Matching the leaf as well as the full path matters in a hierarchical
+        design, where every net name is prefixed with its sheet.
+        """
         from fnmatch import fnmatchcase
 
-        return [
-            n
-            for n in self.nets
-            if any(fnmatchcase(n.name.upper(), p.upper()) for p in patterns)
-        ]
+        def hit(net: Net) -> bool:
+            full = net.name.upper()
+            leaf = net.name.rsplit("/", 1)[-1].upper()
+            return any(
+                fnmatchcase(full, p.upper()) or fnmatchcase(leaf, p.upper())
+                for p in patterns
+            )
+
+        return [n for n in self.nets if hit(n)]
+
+    @cached_property
+    def sheets(self) -> dict[str, list[Component]]:
+        """Sheet name -> the components on it."""
+        out: dict[str, list[Component]] = {}
+        for c in self.components:
+            out.setdefault(c.sheet or "(root)", []).append(c)
+        return out
+
+    def sheet_of_net(self, net: Net) -> str | None:
+        """The sheet a net's name is scoped to, if it is scoped at all."""
+        if "/" not in net.name.strip("/"):
+            return None
+        return net.name.strip("/").rsplit("/", 1)[0] or None
 
     def census(self) -> dict[str, int]:
         """Headline counts, used by `xforge inspect` and the report header."""

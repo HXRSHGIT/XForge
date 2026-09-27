@@ -13,7 +13,7 @@ from pathlib import Path
 from xforge import __version__
 from xforge.config import Config
 from xforge.model import Design
-from xforge.readers import kicad_netlist
+from xforge import readers
 from xforge.rules import Severity, registry, run
 
 EXIT_OK = 0
@@ -22,7 +22,7 @@ EXIT_ERROR = 2  # could not run
 
 
 def _read(path: Path) -> Design:
-    return kicad_netlist.read(path)
+    return readers.read(path)
 
 
 def _cmd_inspect(args) -> int:

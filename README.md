@@ -29,6 +29,9 @@ xforge inspect design.net       # census only
 xforge rules                    # what is registered and where each rule comes from
 ```
 
+Both the S-expression and the XML netlist are accepted, chosen by content
+rather than extension — KiCad writes both to `.net`.
+
 Getting a netlist out of KiCad:
 
 ```bash
@@ -45,10 +48,15 @@ kicad-cli sch export netlist --format kicadsexpr -o design.net design.kicad_sch
 | XF002 | Dangling net | Warning | Xbattery convention |
 | XF003 | Component straddles an isolation barrier | Advisory | IEC 60664-1; declared domains |
 | XF004 | Placeholder footprint | Info | Xbattery convention |
+| XF005 | Sheet has no connection to the rest of the design | Error | Xbattery convention; KiCad sheet pins |
 
 Every rule cites where its criterion comes from, and a test asserts that it
 does. A rule nobody can trace to a source is a rule nobody can argue with,
 which is worse than no rule.
+
+See `docs/standards.md` for where every constant comes from and which rules
+are allowed to gate a build. See `docs/BJB-RevC-findings.md` for the first real
+run against a live design.
 
 ## Enforcement
 
