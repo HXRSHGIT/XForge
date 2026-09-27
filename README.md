@@ -25,6 +25,7 @@ runner we do not control.
 
 ```bash
 xforge check design.net -c xforge.yaml --html report.html --json findings.json
+xforge power design.net -c xforge.yaml --netclasses nc.json --csv constraints.csv
 xforge inspect design.net       # census only
 xforge rules                    # what is registered and where each rule comes from
 ```
@@ -84,6 +85,46 @@ one false positive early on is enough for a team to start ignoring the tool.
 Rules graduate to gating once their false-positive rate on real boards is known.
 
 Exit codes: `0` clean or advisory-only, `1` a gating rule fired, `2` could not run.
+
+## Conductor sizing
+
+`xforge power` turns declared currents into the copper geometry they need.
+A netlist cannot say what a net carries, so currents are declared in the
+project config, by net pattern or by profile net role:
+
+```yaml
+stackup:
+  layers: 4
+  outer_copper_oz: 2.0
+  inner_copper_oz: 1.0
+  max_temp_rise_c: 20.0
+  ambient_c: 55.0          # inside the enclosure, not lab ambient
+
+currents:
+  - nets: ["PACK_POS", "PACK_NEG", "MAIN_POS"]
+    continuous_a: 100.0
+    peak_a: 200.0
+  - role: coil              # resolved through the profile
+    continuous_a: 2.0
+```
+
+Output is the required outer and inner trace width, a minimum via count, and a
+netclass band per net — exportable as netclass JSON and as a CSV the layout
+engineer can work from. Sizing uses **IPC-2221**, which is public and
+implementable; it is conservative relative to IPC-2152 and says so. See
+`docs/standards.md`.
+
+Where the required copper is wider than a trace can sensibly be, the report
+says so and gives the busbar cross-section instead of printing an absurd
+width:
+
+```
+  * wider than the 20 mm trace limit - not a trace. Carry these as a busbar:
+      PACK_POS   200 A  ->  100.0 mm2 at 2.0 A/mm2 (e.g. 33 x 3 mm bar)
+```
+
+A declared current that matches no net is reported too — that is a config bug,
+and silently sizing nothing would hide it.
 
 ## Profiles
 

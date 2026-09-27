@@ -62,3 +62,28 @@ expected_dangling: []
 # currently firing on a verified, reproducible defect with zero false
 # positives, so they are the ones to promote first.
 gating_rules: []
+
+# ── conductor sizing ──────────────────────────────────────────────────
+# A netlist cannot say what a net carries, so currents are declared here.
+# These are PLACEHOLDERS pending Harsh's numbers; they are marked as such in
+# the note and the report repeats it.
+stackup:
+  layers: 4
+  outer_copper_oz: 2.0
+  inner_copper_oz: 1.0
+  max_temp_rise_c: 20.0
+  ambient_c: 55.0          # inside a sealed enclosure, not lab ambient
+  via_drill_mm: 0.3
+  via_plating_um: 25.0
+
+currents:
+  - nets: ["PACK_POS", "PACK_NEG", "PACK_FUSED", "MAIN_POS", "LOAD_POS", "LOAD_NEG"]
+    continuous_a: 100.0
+    peak_a: 200.0
+    note: "PLACEHOLDER - confirm against the pack spec for this build"
+  - nets: ["PRECHARGE_POS", "PRECHARGE_NEG"]
+    continuous_a: 10.0
+    note: "PLACEHOLDER - precharge is intermittent; sizing on peak"
+  - role: coil
+    continuous_a: 2.0
+    note: "PLACEHOLDER - per selected contactor coil"
