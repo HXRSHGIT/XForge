@@ -122,10 +122,10 @@ match `BUS_V_SENSE` and `PACK_V_SENSE`, which are ADC inputs on U900 — the
 low-voltage end of a divider, not bus conductors. Sheet scope is the reliable
 signal in a hierarchical design.
 
-XF003 (barrier straddle) reports nothing on RevC, correctly: with both sheets
+XF008 (barrier crossing) reports nothing on RevC, correctly: with both sheets
 orphaned, nothing crosses a domain boundary because nothing crosses anything.
-It becomes meaningful once the sheet pins are wired — which is a useful property
-to keep in mind when reading a clean XF003 result.
+It becomes meaningful once the sheet pins are wired — which is worth keeping in
+mind when reading a clean isolation result.
 
 ## Open questions
 
