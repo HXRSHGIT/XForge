@@ -17,12 +17,6 @@ if TYPE_CHECKING:
     from xforge.config import Config
     from xforge.model import Design, Net
 
-# Only nets that are the coil itself. An earlier version also matched
-# "*CONTACTOR*" and "*RELAY*", which swept in TEMP_CONTACTOR (a thermistor
-# sense line) and CONTACTOR_CMD (a logic command into a driver). Neither is
-# an inductive load and neither wants a clamp.
-_COIL_PATTERNS = ("*COIL*", "*SOLENOID*")
-
 
 def _leaf(name: str) -> str:
     return name.rsplit("/", 1)[-1]
@@ -46,16 +40,19 @@ def interlock_chain(design: "Design", config: "Config") -> Iterable[Finding]:
     bypass. This rule discovers the chain rather than being told it, and
     reports the chain it found so a reviewer can confirm the order.
     """
-    switches = [c for c in design.components if c.is_kind("switch")]
+    prof = config.profile
+    switches = [c for c in design.components if prof.is_kind(c, "switch", "relay")]
     if not switches:
         yield Finding(
             rule_id="XF010",
             severity=Severity.INFO,
             summary="No interlock switches found",
             detail=(
-                "No component classifies as a switch, so there is no interlock "
-                "chain to check. If the interlock is external and represented "
-                "by a connector, this rule cannot see it."
+                "No component classifies as a switch or relay under the "
+                f"'{prof.name}' profile, so there is no interlock chain to "
+                "check. If the interlock is external and reaches the board "
+                "through a connector only, this rule cannot see it - say so "
+                "explicitly rather than reading this as a pass."
             ),
             status=Status.BLOCKED,
             confidence="verified",
@@ -159,22 +156,53 @@ def coil_clamp(design: "Design", config: "Config") -> Iterable[Finding]:
     inside the contactor, so this reports rather than fails, and asks for the
     datasheet confirmation.
     """
-    coil_nets = design.nets_matching(*_COIL_PATTERNS)
+    prof = config.profile
+    if not prof.knows_role("coil"):
+        yield Finding(
+            rule_id="XF011",
+            severity=Severity.INFO,
+            summary=f"Profile '{prof.name}' defines no coil nets",
+            detail=(
+                "This rule needs to know which nets drive an inductive load. "
+                "The active profile lists no patterns for the 'coil' role, so "
+                "nothing was examined. Add patterns under net_roles.coil in "
+                "the profile, or select a profile that has them."
+            ),
+            status=Status.BLOCKED,
+            confidence="verified",
+        )
+        return
+
+    coil_nets = prof.nets_with_role(design.nets, "coil")
     if not coil_nets:
+        yield Finding(
+            rule_id="XF011",
+            severity=Severity.INFO,
+            summary="No coil nets found in this design",
+            detail=(
+                f"The '{prof.name}' profile knows how to recognise coil nets "
+                "but this design has none matching. If the board does drive a "
+                "contactor or relay, the net naming does not match the "
+                "profile - extend net_roles.coil rather than assuming a pass."
+            ),
+            status=Status.BLOCKED,
+            confidence="verified",
+        )
         return
 
     for net in sorted(coil_nets, key=lambda n: n.name):
         clamps = [
             r
             for r in sorted(net.refs)
-            if (c := design.component(r)) is not None and c.is_clamp
+            if (c := design.component(r)) is not None and prof.is_clamp(c)
         ]
         if clamps:
             continue
         external = [
             r
             for r in sorted(net.refs)
-            if (c := design.component(r)) is not None and c.is_kind("connector")
+            if (c := design.component(r)) is not None
+            and prof.is_kind(c, "connector")
         ]
         yield Finding(
             rule_id="XF011",
@@ -212,9 +240,23 @@ def thermistor_bias(design: "Design", config: "Config") -> Iterable[Finding]:
     it - unless the bias lives off-board or on a sheet this netlist does not
     connect, which is reported rather than assumed.
     """
-    for comp in sorted(design.components, key=lambda c: c.ref):
-        if not comp.is_kind("thermistor"):
-            continue
+    prof = config.profile
+    thermistors = [c for c in design.components if prof.is_kind(c, "thermistor")]
+    if not thermistors:
+        yield Finding(
+            rule_id="XF012",
+            severity=Severity.INFO,
+            summary="No thermistors found in this design",
+            detail=(
+                f"Nothing classifies as a thermistor under the '{prof.name}' "
+                "profile, so nothing was examined."
+            ),
+            status=Status.BLOCKED,
+            confidence="verified",
+        )
+        return
+
+    for comp in sorted(thermistors, key=lambda c: c.ref):
         nets = design.nets_of.get(comp.ref, [])
         if not nets:
             continue
@@ -227,9 +269,9 @@ def thermistor_bias(design: "Design", config: "Config") -> Iterable[Finding]:
                 other = design.component(r)
                 if other is None:
                     continue
-                if other.is_kind("resistor"):
+                if prof.is_kind(other, "resistor"):
                     biased = True
-                if other.is_kind("connector"):
+                if prof.is_kind(other, "connector"):
                     reaches_connector = True
         if biased:
             continue

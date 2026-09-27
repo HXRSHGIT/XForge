@@ -1,0 +1,109 @@
+# Base technology profile — generic electronics, no domain assumptions.
+#
+# A profile holds the vocabulary a rule needs: what parts are called, what
+# designator prefixes mean, which net names play which role. Rules hold the
+# algorithm. Keeping them apart is what stops a rule written for one board
+# from silently not applying to the next one.
+#
+# Profiles stack: a project selects one with `profile:` in its xforge.yaml
+# and may override any key under `profile_overrides:`.
+
+name: base
+extends: null
+
+# ── designators ───────────────────────────────────────────────────────
+# Reference-designator prefixes, broadly IEEE 315 / IEC 81346. Override
+# per project if the house convention differs.
+designators:
+  R: resistor
+  C: capacitor
+  L: inductor
+  D: diode
+  Z: zener
+  Q: transistor
+  U: ic
+  IC: ic
+  J: connector
+  P: connector
+  X: connector
+  SW: switch
+  S: switch
+  K: relay
+  F: fuse
+  FB: ferrite
+  TH: thermistor
+  RT: thermistor
+  TP: testpoint
+  H: mechanical
+  MH: mechanical
+  FID: mechanical
+  T: transformer
+  BR: bridge
+  Y: crystal
+  XTAL: crystal
+  LED: led
+  BT: battery
+  M: motor
+  PS: power_supply
+
+# Prefixes where the designator settles what a part is, and free-text is
+# not consulted. A connector stays a connector however its description
+# reads — this is what stopped J911 ("rated external switchgear") being
+# classified as a switch.
+authoritative_prefixes: [J, P, X, TP, H, MH, FID]
+
+# ── part taxonomy ─────────────────────────────────────────────────────
+# kind -> substrings matched against value and library reference only.
+# Never against the description: that is prose written for a human, and
+# substring-matching prose produces confident nonsense.
+part_taxonomy:
+  diode: [diode, schottky, rectif, "1n4", "1n5", bav, pmeg, ss14, mbr]
+  tvs: [tvs, transil, smaj, smbj, smcj, smdj, pesd, esd, sm712]
+  zener: [zener, bzx, bzt, mmsz]
+  thermistor: [thermistor, ntc, ptc]
+  switch: [sw_spst, sw_spdt, sw_dpst, sw_push, switch]
+  relay: [relay, spdt_relay]
+  fuse: [fuse, littelfuse, "0603fa", polyfuse]
+  connector: [conn_, connector, header, receptacle, "tsw-", molex, jst]
+  optocoupler: [optocoupl, "817", "tlp", "4n25", "6n137"]
+  isolator: [iso1, iso7, adum, si86, si82, isolat, isolated]
+  transformer: [transformer, "hm2103", pulse_tx]
+  regulator: [regulator, ldo, "tps7", "lm317", "ap2112", buck, boost, "mp15"]
+  mcu: [stm32, atmega, atsam, esp32, rp2040, nrf52, mcu_]
+  opamp: [opamp, "lm358", "tlv9", "opa", "mcp60"]
+  adc: [adc, ads1, mcp34, nau78]
+  crystal: [crystal, xtal, resonator]
+  inductor: [inductor, choke, "vls", "xal"]
+
+# Kinds that can clamp an inductive kickback or a transient.
+clamp_kinds: [diode, tvs, zener]
+
+# Kinds whose job is to carry signal or power across an isolation barrier.
+crossing_kinds: [isolator, optocoupler, transformer]
+
+# Kinds whose *rating* is itself a protective function, so an unspecified
+# value is an error rather than an untidy loose end.
+safety_critical_kinds: [fuse]
+
+# Words in a value or reference that mark a part as protective.
+safety_critical_hints: []
+
+# ── net roles ─────────────────────────────────────────────────────────
+# role -> fnmatch patterns, matched against the net's leaf name and its
+# full hierarchical path, case-insensitively.
+#
+# A role with no patterns means "this profile does not know how to find
+# these nets". Rules keyed on an empty role report `not evaluable` rather
+# than passing, so an inapplicable rule never looks like a clean result.
+net_roles:
+  power:
+    [GND, AGND, DGND, PGND, EARTH, CHASSIS, VCC, VDD, VSS, VBUS, VBAT,
+     "*_5V", "*_3V3", "*_12V", "*_24V", "*V3*", "+5V", "+3V3", "+12V", "+24V"]
+  coil: []
+  interlock: []
+  current_sense: []
+  cell_tap: []
+
+# Net roles that legitimately appear as several separate nets — power
+# rails are redrawn per sheet by convention.
+multi_instance_roles: [power]

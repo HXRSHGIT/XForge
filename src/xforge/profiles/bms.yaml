@@ -1,0 +1,43 @@
+# Battery-management / junction-box profile.
+#
+# Extends `base` with the vocabulary of a pack: contactors and their coils,
+# the interlock chain, cell taps, the current shunt, and the analogue front
+# ends. Everything here is additive — lists concatenate onto the base ones.
+#
+# If a rule finds nothing because a net is named differently on your board,
+# add the pattern here rather than editing the rule.
+
+name: bms
+extends: base
+
+part_taxonomy:
+  # Battery monitoring / protection front ends.
+  afe: [bq769, bq76, bq77, adbms, ltc68, ltc681, mc3377, isl94, max172, bq40]
+  fuel_gauge: [max170, max172, bq27, bq34, ltc294]
+  # High-current switching.
+  contactor: [contactor, ev200, lev200, gx14, gx16, "el-cp"]
+  gate_driver: [gate_driver, "ir21", "ucc27", "adum42", "si823"]
+  # Current measurement.
+  current_sense_amp: [ina1, ina2, ina3, "ltc699", "max4", shunt_amp]
+  shunt: [shunt, "wsl", "wsr", "csnl", "pmr"]
+  # Isolated comms, common on a BMS.
+  can_transceiver: [iso1050, "tcan", "sn65hvd", "mcp2551", "tja10"]
+  rs485_transceiver: ["sp348", "max485", "sn65hvd7", "thvd"]
+
+safety_critical_kinds: [thermistor, contactor, shunt, afe]
+
+safety_critical_hints:
+  [precharge, pre-charge, shunt, contactor, coil, clamp, interlock, hvil,
+   estop, e_stop, fuse, isolation, cell, pack]
+
+net_roles:
+  coil: ["*COIL*", "*SOLENOID*", "*CONTACTOR_DRV*", "*K?_DRV*", "*RELAY_DRV*"]
+  interlock:
+    ["*HVIL*", "*ESTOP*", "*E_STOP*", "*SAFETY_LOOP*", "*MSD*",
+     "*INTERLOCK*", "*CRASH*"]
+  current_sense: ["SHUNT*", "*ISENSE*", "*I_SENSE*", "*CURR_SENSE*", "*IPACK*"]
+  cell_tap: ["CELL*", "*CELL_TAP*", "VC?", "VC??", "*_CT?", "*_CT??"]
+  pack_power: ["PACK_*", "*PACK_POS*", "*PACK_NEG*", "BUS_P*", "BUS_N*", "HV*"]
+  temperature: ["TEMP_*", "*_TEMP", "NTC*", "*THERM*"]
+
+multi_instance_roles: [power]
