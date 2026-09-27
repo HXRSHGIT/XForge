@@ -4,3 +4,6 @@ __pycache__/
 out/
 *.egg-info/
 .pytest_cache/
+
+# generated docs
+XbatteryEDAPlatform.html

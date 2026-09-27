@@ -54,9 +54,12 @@ Every rule cites where its criterion comes from, and a test asserts that it
 does. A rule nobody can trace to a source is a rule nobody can argue with,
 which is worse than no rule.
 
-See `docs/standards.md` for where every constant comes from and which rules
-are allowed to gate a build. See `docs/BJB-RevC-findings.md` for the first real
-run against a live design.
+`docs/` holds the reasoning: [`standards.md`](docs/standards.md) for where every
+constant comes from and which rules may gate a build,
+[`BJB-RevC-findings.md`](docs/BJB-RevC-findings.md) for the first real run
+against a live design, and
+[`platform-study/`](docs/platform-study/atopile-analysis.md) for the analysis
+that led to building this instead of adopting an existing tool.
 
 ## Enforcement
 
