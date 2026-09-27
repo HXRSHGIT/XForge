@@ -8,19 +8,12 @@ guessing from net names.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from functools import cached_property
 from fnmatch import fnmatchcase
 from pathlib import Path
 
+from xforge import profile as profile_mod
 from xforge.rules.base import Severity
-
-# Power rails are conventionally redrawn on every sheet, so seeing the same
-# name as several nets is normal for them and only for them.
-DEFAULT_GLOBAL_POWER_NETS = (
-    "GND", "AGND", "DGND", "PGND", "EARTH", "CHASSIS",
-    "VCC", "VDD", "VSS", "VBUS", "VBAT",
-    "*_5V", "*_3V3", "*_12V", "*_24V", "*V3*", "+5V", "+3V3", "+12V", "+24V",
-)
-
 
 @dataclass
 class Domain:
@@ -51,15 +44,20 @@ class Config:
     """Everything a rule may need that is not in the netlist."""
 
     project: str = ""
+    # Which technology vocabulary the rules are read against. "base" makes
+    # no domain assumptions; "bms" adds pack vocabulary. Rules keyed on a
+    # role the profile does not define report `not evaluable`.
+    profile_name: str = "base"
+    profile_overrides: dict = field(default_factory=dict)
     domains: list[Domain] = field(default_factory=list)
     # Nets that are allowed to be single-pin (test points, spares, mounting).
     expected_dangling: list[str] = field(default_factory=list)
     # Signal names that legitimately exist as several nets. Power rails are
     # drawn per sheet by convention, so they are excluded from XF001 unless
     # a project overrides this list.
-    global_power_nets: list[str] = field(
-        default_factory=lambda: list(DEFAULT_GLOBAL_POWER_NETS)
-    )
+    # Additional rails beyond the profile's `power` role. Empty by default:
+    # the vocabulary lives in profiles/base.yaml, not in Python.
+    global_power_nets: list[str] = field(default_factory=list)
     # Parts allowed to span two domains: refs or fnmatch patterns on the
     # ref, e.g. ["U903", "PS*"]. Declaring one is a recorded engineering
     # decision, which is the point.
@@ -80,6 +78,8 @@ class Config:
         raw = _load_yaml(path)
         return cls(
             project=raw.get("project", ""),
+            profile_name=raw.get("profile", "base"),
+            profile_overrides=dict(raw.get("profile_overrides", {}) or {}),
             domains=[
                 Domain(
                     name=d.get("name", f"domain{i}"),
@@ -92,9 +92,7 @@ class Config:
             ],
             expected_dangling=list(raw.get("expected_dangling", []) or []),
             crossings=list(raw.get("crossings", []) or []),
-            global_power_nets=list(
-                raw.get("global_power_nets", DEFAULT_GLOBAL_POWER_NETS)
-            ),
+            global_power_nets=list(raw.get("global_power_nets", []) or []),
             disabled_rules=set(raw.get("disabled_rules", []) or []),
             severity_overrides={
                 k: Severity[v.upper()]
@@ -102,6 +100,11 @@ class Config:
             },
             gating_rules=set(raw.get("gating_rules", []) or []),
         )
+
+    @cached_property
+    def profile(self) -> "profile_mod.Profile":
+        """The merged vocabulary this project's rules run against."""
+        return profile_mod.load(self.profile_name, self.profile_overrides or None)
 
     def is_expected_dangling(self, net_name: str) -> bool:
         leaf = net_name.rsplit("/", 1)[-1].upper()
@@ -124,9 +127,13 @@ class Config:
         return False
 
     def is_global_power(self, leaf_name: str) -> bool:
-        return any(
-            fnmatchcase(leaf_name.upper(), p.upper()) for p in self.global_power_nets
-        )
+        """Is this a rail that legitimately exists as several nets?
+
+        The patterns live in the profile's `power` net role. The explicit
+        `global_power_nets` field remains as a per-project override.
+        """
+        patterns = list(self.global_power_nets) + self.profile.patterns_for("power")
+        return any(fnmatchcase(leaf_name.upper(), p.upper()) for p in patterns)
 
     def domain_of(self, net_name: str) -> Domain | None:
         """Domain of a net, by explicit net pattern first, then by sheet.

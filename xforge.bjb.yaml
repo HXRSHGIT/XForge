@@ -10,6 +10,12 @@
 # reliable signal in a hierarchical design.
 project: "BJB RevC - Battery Junction Box"
 
+# Technology vocabulary the rules read against. "bms" extends "base" with
+# pack vocabulary: coil, interlock, cell-tap, current-sense and temperature
+# net roles, plus AFE/contactor/shunt part families. Anything this board
+# names differently belongs in profile_overrides below, not in a rule.
+profile: bms
+
 domains:
   - name: HV
     # Working voltage is NOT yet known for this build. It depends on the

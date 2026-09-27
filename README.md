@@ -85,6 +85,49 @@ Rules graduate to gating once their false-positive rate on real boards is known.
 
 Exit codes: `0` clean or advisory-only, `1` a gating rule fired, `2` could not run.
 
+## Profiles
+
+A rule holds an algorithm. A **profile** holds the vocabulary that algorithm
+needs — what parts are called, what designator prefixes mean, which net names
+play which role. Keeping them apart is what stops a rule written for one board
+from silently not applying to the next one.
+
+```
+profiles/base.yaml   generic electronics, no domain assumptions
+profiles/bms.yaml    extends base: coil, interlock, cell-tap, current-sense
+                     and temperature net roles; AFE, contactor, shunt,
+                     isolated-transceiver part families
+```
+
+A project selects one and may extend it:
+
+```yaml
+profile: bms
+profile_overrides:
+  net_roles:
+    coil: ["*PUMP_DRV*"]      # appended to the profile's, not replacing them
+```
+
+Lists concatenate on merge, so adding one pattern never discards the profile's.
+
+### A rule that cannot look says so
+
+If a rule needs a net role the active profile does not define, it reports
+**not evaluable** and names the profile — it does not pass. The same design
+checked twice:
+
+```
+$ xforge check bjb.net -c xforge.bjb.yaml      # profile: bms
+  2 check(s) passed, 0 not evaluable
+
+$ xforge check bjb.net                         # profile: base
+ ?[Info    ] XF011  Profile 'base' defines no coil nets
+  1 check(s) passed, 2 not evaluable
+```
+
+Silence and "I did not look" are different results, and the tool has to be able
+to tell you which one it is.
+
 ## Config
 
 `xforge.yaml` holds what a netlist cannot state — which nets are HV, which are

@@ -17,10 +17,6 @@ if TYPE_CHECKING:
     from xforge.config import Config
     from xforge.model import Design
 
-# Part kinds that exist to carry signal or power across a barrier.
-_CROSSING_KINDS = ("isolator", "optocoupler", "transformer")
-
-
 def _leaf(name: str) -> str:
     return name.rsplit("/", 1)[-1]
 
@@ -40,6 +36,7 @@ def undeclared_crossing(design: "Design", config: "Config") -> Iterable[Finding]
     accepted with an advisory so the creepage of the barrier still gets
     looked at. Anything else spanning the barrier is an error.
     """
+    prof = config.profile
     if len(config.domains) < 2:
         yield Finding(
             rule_id="XF008",
@@ -94,7 +91,7 @@ def undeclared_crossing(design: "Design", config: "Config") -> Iterable[Finding]
                 status=Status.PASS,
                 confidence="verified",
             )
-        elif comp is not None and comp.is_kind(*_CROSSING_KINDS):
+        elif comp is not None and prof.is_crossing_device(comp):
             yield Finding(
                 rule_id="XF008",
                 severity=Severity.ADVISORY,

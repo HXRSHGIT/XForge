@@ -11,6 +11,7 @@ import pytest
 
 from xforge.config import Config
 from xforge.model import Component, Design, Net, Pin
+from xforge.profile import load as load_profile
 from xforge.rules import Severity, Status, run
 
 FIXTURE = Path(__file__).parent / "fixtures" / "bjb_revc.net"
@@ -27,9 +28,22 @@ def _design(nets=(), components=()):
     return Design(name="t", components=list(components), nets=list(nets))
 
 
+def _bms() -> Config:
+    """A project config on the bms profile, as a real pack project would use."""
+    return Config(profile_name="bms")
+
+
 def _findings(design, config=None, rule_id=None):
-    out = run(design, config or Config())
+    out = run(design, config or _bms())
     return [f for f in out if rule_id is None or f.rule_id == rule_id]
+
+
+def _violations(design, config=None, rule_id=None):
+    return [
+        f
+        for f in _findings(design, config, rule_id)
+        if f.status is Status.VIOLATION
+    ]
 
 
 class TestXF006UnspecifiedRating:
@@ -116,7 +130,7 @@ class TestXF011CoilClamp:
                 Component(ref="D1", value="PMEG6010ER"),
             ],
         )
-        assert _findings(d, rule_id="XF011") == []
+        assert _violations(d, rule_id="XF011") == []
 
     def test_does_not_match_sense_or_command_nets(self):
         """TEMP_CONTACTOR and CONTACTOR_CMD are not inductive loads.
@@ -133,10 +147,20 @@ class TestXF011CoilClamp:
                 Component(ref="U1", value="STM32G0B1CETx"),
             ],
         )
-        assert _findings(d, rule_id="XF011") == []
+        assert _violations(d, rule_id="XF011") == []
+
+    def test_reports_blocked_when_the_profile_has_no_coil_vocabulary(self):
+        """On the base profile the rule must say it did not look."""
+        d = _design(
+            nets=[Net("/MAIN_COIL-", pins=[Pin("J1", "3")])],
+            components=[Component(ref="J1", value="Conn_01x04")],
+        )
+        found = _findings(d, Config(profile_name="base"), rule_id="XF011")
+        assert [f.status for f in found] == [Status.BLOCKED]
+        assert "base" in found[0].summary
 
     def test_golden_on_bjb(self, bjb):
-        nets = sorted(f.summary.split("'")[1] for f in _findings(bjb, rule_id="XF011"))
+        nets = sorted(f.summary.split("'")[1] for f in _violations(bjb, rule_id="XF011"))
         assert nets == [
             "COIL_ENABLE_HW",
             "COIL_RETURN",
@@ -180,7 +204,7 @@ class TestXF012ThermistorBias:
                 Component(ref="R1", value="10k"),
             ],
         )
-        assert _findings(d, rule_id="XF012") == []
+        assert _violations(d, rule_id="XF012") == []
 
     def test_connector_is_not_mistaken_for_a_thermistor(self):
         """J914's description reads 'Power-path NTC harness'. It is a connector."""
@@ -195,14 +219,16 @@ class TestXF012ThermistorBias:
                 )
             ],
         )
-        assert _findings(d, rule_id="XF012") == []
+        assert _violations(d, rule_id="XF012") == []
 
     def test_golden_on_bjb(self, bjb):
-        refs = sorted(f.summary.split()[0] for f in _findings(bjb, rule_id="XF012"))
+        refs = sorted(f.summary.split()[0] for f in _violations(bjb, rule_id="XF012"))
         assert refs == ["TH900", "TH901", "TH902"]
 
 
 class TestClassification:
+    """Classification is the profile's job, not the model's."""
+
     def test_designator_beats_prose(self, bjb):
         """A connector stays a connector whatever its description says.
 
@@ -210,13 +236,24 @@ class TestClassification:
         switchgear' and J914 as a 'Power-path NTC harness'. Substring
         matching on those read them as a switch and a thermistor.
         """
-        assert bjb.component("J911").kinds() == {"connector"}
-        assert bjb.component("J914").kinds() == {"connector"}
+        prof = load_profile("bms")
+        assert prof.kinds(bjb.component("J911")) == {"connector"}
+        assert prof.kinds(bjb.component("J914")) == {"connector"}
 
     def test_real_parts_classify(self, bjb):
-        assert bjb.component("SW900").is_kind("switch")
-        assert bjb.component("TH900").is_kind("thermistor")
-        assert bjb.component("D2").is_clamp
-        assert bjb.component("Z1").is_clamp
-        assert bjb.component("F900").is_kind("fuse")
-        assert bjb.component("U903").is_kind("isolator")
+        prof = load_profile("bms")
+        assert prof.is_kind(bjb.component("SW900"), "switch")
+        assert prof.is_kind(bjb.component("TH900"), "thermistor")
+        assert prof.is_clamp(bjb.component("D2"))
+        assert prof.is_clamp(bjb.component("Z1"))
+        assert prof.is_kind(bjb.component("F900"), "fuse")
+        assert prof.is_kind(bjb.component("U903"), "isolator")
+
+    def test_bms_profile_knows_parts_base_does_not(self, bjb):
+        """U903 is a CAN transceiver only under the bms vocabulary."""
+        assert load_profile("bms").is_kind(
+            bjb.component("U903"), "can_transceiver"
+        )
+        assert not load_profile("base").is_kind(
+            bjb.component("U903"), "can_transceiver"
+        )
