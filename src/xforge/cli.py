@@ -104,6 +104,96 @@ def _cmd_check(args) -> int:
     return EXIT_OK
 
 
+def _cmd_power(args) -> int:
+    from xforge import power
+
+    design = _read(args.netlist)
+    config = Config.load(args.config)
+    report = power.analyse(design, config)
+
+    if not report.nets and not report.unmatched_specs:
+        print(
+            "No currents declared. Add a `currents:` block to the project "
+            "config; a netlist cannot tell us what a net carries."
+        )
+        return EXIT_OK
+
+    s = report.stackup
+    print(f"{report.design}")
+    print(
+        f"  stackup: {s.layers} layer, {s.outer_copper_oz} oz outer / "
+        f"{s.inner_copper_oz} oz inner, max rise {s.max_temp_rise_c} C"
+    )
+    print()
+    print(
+        f"  {'net':36s} {'A':>7s} {'outer mm':>9s} {'inner mm':>9s} "
+        f"{'vias':>5s}  class"
+    )
+    oversized = []
+    for n in report.nets:
+        amps = f"{n.peak_a or n.continuous_a:.1f}"
+        mark = " *" if n.exceeds_trace_limit else "  "
+        print(
+            f"  {n.net[:36]:36s} {amps:>7s} "
+            f"{n.outer.width_mm:>9.2f} {n.inner.width_mm:>9.2f} "
+            f"{n.vias.count:>5d}  {n.netclass}{mark}"
+        )
+        if n.exceeds_trace_limit:
+            oversized.append(n)
+
+    if oversized:
+        print()
+        print(
+            f"  * wider than the {config.trace_limit_mm:.0f} mm trace limit - "
+            "not a trace. Carry these as a busbar or heavy-copper pour:"
+        )
+        for n in oversized:
+            leaf = n.net.rsplit("/", 1)[-1]
+            print(
+                f"      {leaf:28s} {n.peak_a or n.continuous_a:>6.0f} A  ->  "
+                f"{n.busbar_mm2:>6.1f} mm2 at 2.0 A/mm2 "
+                f"(e.g. {n.busbar_mm2 / 3:.0f} x 3 mm bar)"
+            )
+        print(
+            "    Busbar current density is industry convention, not a "
+            "standard value - see docs/standards.md."
+        )
+    if report.unmatched_specs:
+        print()
+        print("  declared currents that matched no net:")
+        for spec in report.unmatched_specs:
+            what = spec.role or ", ".join(spec.nets)
+            print(f"    {spec.continuous_a} A  ->  {what}")
+
+    print()
+    print(f"  method: IPC-2221 (conservative vs IPC-2152)")
+
+    if args.netclasses:
+        import json
+
+        args.netclasses.write_text(
+            json.dumps(report.netclasses, indent=2), encoding="utf-8"
+        )
+        print(f"  netclasses: {args.netclasses}")
+    if args.csv:
+        import csv
+
+        with open(args.csv, "w", newline="", encoding="utf-8") as fh:
+            w = csv.writer(fh)
+            w.writerow(
+                ["net", "continuous_a", "peak_a", "outer_mm", "inner_mm",
+                 "min_vias", "netclass", "method"]
+            )
+            for n in report.nets:
+                w.writerow([
+                    n.net, n.continuous_a, n.peak_a or "",
+                    round(n.outer.width_mm, 3), round(n.inner.width_mm, 3),
+                    n.vias.count, n.netclass, n.outer.method,
+                ])
+        print(f"  csv       : {args.csv}")
+    return EXIT_OK
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="xforge",
@@ -125,6 +215,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="fail on errors from any gating-capable rule (CI use)",
     )
     c.set_defaults(func=_cmd_check)
+
+    p2 = sub.add_parser(
+        "power", help="conductor requirements for declared currents"
+    )
+    p2.add_argument("netlist", type=Path)
+    p2.add_argument("-c", "--config", type=Path, default=None)
+    p2.add_argument(
+        "--netclasses", type=Path, default=None, help="write netclass JSON"
+    )
+    p2.add_argument("--csv", type=Path, default=None, help="write a constraint CSV")
+    p2.set_defaults(func=_cmd_power)
 
     i = sub.add_parser("inspect", help="summarise a netlist")
     i.add_argument("netlist", type=Path)

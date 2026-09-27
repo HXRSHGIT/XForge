@@ -62,6 +62,11 @@ class Config:
     # ref, e.g. ["U903", "PS*"]. Declaring one is a recorded engineering
     # decision, which is the point.
     crossings: list[str] = field(default_factory=list)
+    # Currents a netlist cannot state, and the stackup they are sized against.
+    raw_currents: list = field(default_factory=list)
+    raw_stackup: dict = field(default_factory=dict)
+    # Above this width a trace is no longer the sensible conductor.
+    trace_limit_mm: float = 20.0
     disabled_rules: set[str] = field(default_factory=set)
     severity_overrides: dict[str, Severity] = field(default_factory=dict)
     # Rules allowed to fail CI. Empty means advisory-only, which is the
@@ -92,6 +97,9 @@ class Config:
             ],
             expected_dangling=list(raw.get("expected_dangling", []) or []),
             crossings=list(raw.get("crossings", []) or []),
+            raw_currents=list(raw.get("currents", []) or []),
+            raw_stackup=dict(raw.get("stackup", {}) or {}),
+            trace_limit_mm=float(raw.get("trace_limit_mm", 20.0)),
             global_power_nets=list(raw.get("global_power_nets", []) or []),
             disabled_rules=set(raw.get("disabled_rules", []) or []),
             severity_overrides={
@@ -105,6 +113,18 @@ class Config:
     def profile(self) -> "profile_mod.Profile":
         """The merged vocabulary this project's rules run against."""
         return profile_mod.load(self.profile_name, self.profile_overrides or None)
+
+    @cached_property
+    def currents(self) -> list:
+        from xforge.power import CurrentSpec
+
+        return [CurrentSpec.from_raw(c) for c in self.raw_currents]
+
+    @cached_property
+    def stackup(self):
+        from xforge.power import Stackup
+
+        return Stackup.from_raw(self.raw_stackup)
 
     def is_expected_dangling(self, net_name: str) -> bool:
         leaf = net_name.rsplit("/", 1)[-1].upper()
