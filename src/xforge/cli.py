@@ -107,6 +107,26 @@ def _cmd_check(args) -> int:
     return EXIT_OK
 
 
+def _cmd_comms(args) -> int:
+    """Generate every communications artefact from one spec."""
+    from xforge.comms import CommsSpec, SpecError, build
+
+    try:
+        spec = CommsSpec.load(args.spec)
+    except SpecError as exc:
+        # SpecError always names the offending signal, message or register,
+        # so the message is the whole error report.
+        print(f"xforge: {exc}", file=sys.stderr)
+        return EXIT_ERROR
+
+    written = build(spec, args.out, source_name=str(args.spec))
+    for path in written:
+        print(path)
+    print()
+    print(f"{len(written)} artefact(s) from {args.spec}")
+    return EXIT_OK
+
+
 def _cmd_ui(args) -> int:
     """Start the local app."""
     from xforge.ui import serve
@@ -275,6 +295,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p2.add_argument("--csv", type=Path, default=None, help="write a constraint CSV")
     p2.set_defaults(func=_cmd_power)
+
+    cm = sub.add_parser(
+        "comms", help="generate DBC, register map and firmware from one spec"
+    )
+    cm.add_argument("spec", type=Path, help="comms spec (YAML)")
+    cm.add_argument("--out", type=Path, default=Path("out/comms"))
+    cm.set_defaults(func=_cmd_comms)
 
     u = sub.add_parser("ui", help="start the local app (part search + board viewer)")
     u.add_argument(

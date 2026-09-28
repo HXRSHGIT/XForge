@@ -458,3 +458,102 @@ class TestFirmwareOutput:
         # The signed 16-bit signal is the full chosen width (16 == 16), so
         # no sign-extension block should be emitted for it.
         assert "sign" not in source.lower()
+
+
+class TestExtendedAddressing:
+    """29-bit identifiers must be marked extended in the DBC.
+
+    DBC has no addressing field: bit 31 of the id in the BO_ record carries
+    it. Without that, a reader sees 0x1801A1F0 as a standard frame and
+    rejects it for exceeding 11 bits. Every other record that references the
+    message by id - CM_, BA_, VAL_ - has to use the same encoded value or it
+    will not bind to the message.
+
+    This is the addressing mode Xbattery's own BMS uses, and it was broken:
+    the golden test used an 11-bit LuxPower id, so it never showed.
+    """
+
+    def _spec(self):
+        from xforge.comms import CommsSpec
+
+        return CommsSpec.from_dict(
+            {
+                "can_buses": [
+                    {
+                        "name": "pack",
+                        "bitrate": 500000,
+                        "addressing": "extended",
+                        "messages": [
+                            {
+                                "name": "PackStatus",
+                                "id": 0x1801A1F0,
+                                "dlc": 8,
+                                "sender": "BMS",
+                                "cycle_time_ms": 100,
+                                "comment": "Pack telemetry",
+                                "signals": [
+                                    {
+                                        "name": "PackVoltage",
+                                        "start_bit": 0,
+                                        "length": 16,
+                                        "scale": 0.01,
+                                        "unit": "V",
+                                    },
+                                    {
+                                        "name": "FaultFlag",
+                                        "start_bit": 16,
+                                        "length": 1,
+                                        "values": {0: "NoFault", 1: "Fault"},
+                                    },
+                                ],
+                            }
+                        ],
+                    }
+                ]
+            }
+        )
+
+    def test_frame_id_carries_the_extended_flag(self):
+        from xforge.comms.dbc import dbc_frame_id
+
+        assert dbc_frame_id(0x1801A1F0, "extended") == 0x1801A1F0 | 0x80000000
+        assert dbc_frame_id(0x356, "standard") == 0x356
+
+    def test_cantools_reads_it_back_as_extended(self):
+        cantools = pytest.importorskip("cantools")
+        from xforge.comms import generate_dbc
+
+        db = cantools.database.load_string(
+            generate_dbc(self._spec().can_buses[0]), database_format="dbc"
+        )
+        msg = db.get_message_by_name("PackStatus")
+        assert msg.is_extended_frame
+        assert msg.frame_id == 0x1801A1F0
+
+    def test_every_record_binds_to_the_message(self):
+        """CM_, BA_ and VAL_ must use the encoded id, not the raw one."""
+        cantools = pytest.importorskip("cantools")
+        from xforge.comms import generate_dbc
+
+        db = cantools.database.load_string(
+            generate_dbc(self._spec().can_buses[0]), database_format="dbc"
+        )
+        msg = db.get_message_by_name("PackStatus")
+        assert msg.comment == "Pack telemetry"          # CM_ bound
+        assert msg.cycle_time == 100                     # BA_ bound
+        choices = msg.get_signal_by_name("FaultFlag").choices
+        assert dict(choices) == {0: "NoFault", 1: "Fault"}  # VAL_ bound
+
+    def test_named_value_round_trips(self):
+        cantools = pytest.importorskip("cantools")
+        from xforge.comms import generate_dbc
+
+        db = cantools.database.load_string(
+            generate_dbc(self._spec().can_buses[0]), database_format="dbc"
+        )
+        raw = db.encode_message(
+            "PackStatus", {"PackVoltage": 51.2, "FaultFlag": "Fault"}
+        )
+        out = db.decode_message("PackStatus", raw)
+        assert out["PackVoltage"] == pytest.approx(51.2)
+        assert str(out["FaultFlag"]) == "Fault"

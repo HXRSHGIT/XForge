@@ -48,8 +48,24 @@ def _signal_line(sig: CanSignal) -> str:
     )
 
 
-def _message_lines(msg: CanMessage) -> list[str]:
-    lines = [f"BO_ {msg.id} {valid_identifier(msg.name)}: {msg.dlc} {valid_identifier(msg.sender)}"]
+# DBC has no separate field for the addressing mode: a 29-bit identifier is
+# marked by setting bit 31 of the id written in the BO_ record. Without it a
+# reader treats 0x1801A1F0 as a standard frame and rejects it for being wider
+# than 11 bits, which is what cantools does.
+_EXTENDED_FLAG = 0x80000000
+
+
+def dbc_frame_id(msg_id: int, addressing: str) -> int:
+    """The identifier as a DBC file encodes it, including the extended flag."""
+    return msg_id | _EXTENDED_FLAG if addressing == "extended" else msg_id
+
+
+def _message_lines(msg: CanMessage, addressing: str = "standard") -> list[str]:
+    frame_id = dbc_frame_id(msg.id, addressing)
+    lines = [
+        f"BO_ {frame_id} {valid_identifier(msg.name)}: "
+        f"{msg.dlc} {valid_identifier(msg.sender)}"
+    ]
     lines.extend(_signal_line(sig) for sig in msg.signals)
     return lines
 
@@ -76,17 +92,21 @@ def generate_dbc(bus: CanBus, version: str = "") -> str:
     lines.append("")
 
     for msg in bus.messages:
-        lines.extend(_message_lines(msg))
+        lines.extend(_message_lines(msg, bus.addressing))
         lines.append("")
 
     comments: list[str] = []
     for msg in bus.messages:
         if msg.comment:
-            comments.append(f'CM_ BO_ {msg.id} "{_escape(msg.comment)}";')
+            comments.append(
+                f'CM_ BO_ {dbc_frame_id(msg.id, bus.addressing)} '
+                f'"{_escape(msg.comment)}";'
+            )
         for sig in msg.signals:
             if sig.comment:
                 comments.append(
-                    f'CM_ SG_ {msg.id} {valid_identifier(sig.name)} "{_escape(sig.comment)}";'
+                    f'CM_ SG_ {dbc_frame_id(msg.id, bus.addressing)} '
+                    f'{valid_identifier(sig.name)} "{_escape(sig.comment)}";'
                 )
     if comments:
         lines.extend(comments)
@@ -100,7 +120,10 @@ def generate_dbc(bus: CanBus, version: str = "") -> str:
         lines.append('BA_DEF_DEF_ "GenMsgCycleTime" 0;')
         for msg in bus.messages:
             if msg.cycle_time_ms is not None:
-                lines.append(f'BA_ "GenMsgCycleTime" BO_ {msg.id} {msg.cycle_time_ms};')
+                lines.append(
+                    f'BA_ "GenMsgCycleTime" BO_ '
+                    f'{dbc_frame_id(msg.id, bus.addressing)} {msg.cycle_time_ms};'
+                )
         lines.append("")
 
     val_lines = []
@@ -109,7 +132,10 @@ def generate_dbc(bus: CanBus, version: str = "") -> str:
             if not sig.values:
                 continue
             pairs = " ".join(f'{raw} "{_escape(label)}"' for raw, label in sorted(sig.values.items()))
-            val_lines.append(f"VAL_ {msg.id} {valid_identifier(sig.name)} {pairs} ;")
+            val_lines.append(
+                f"VAL_ {dbc_frame_id(msg.id, bus.addressing)} "
+                f"{valid_identifier(sig.name)} {pairs} ;"
+            )
     if val_lines:
         lines.extend(val_lines)
 
