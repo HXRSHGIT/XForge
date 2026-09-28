@@ -63,8 +63,11 @@ def _cmd_check(args) -> int:
             continue
         print(f"{_MARK[f.status]:1s}[{f.severity.label:8s}] {f.rule_id}  {f.summary}")
         if args.verbose:
+            # A subject may be a multi-line formula explanation; indent every
+            # line of it, not just the first.
             for s in f.subjects:
-                print(f"                {s}")
+                for line in str(s).splitlines() or [""]:
+                    print(f"                {line}")
 
     print()
     print(

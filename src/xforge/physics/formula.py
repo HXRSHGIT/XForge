@@ -119,7 +119,10 @@ def get(formula_id: str) -> Formula:
 
 def registry() -> dict[str, Formula]:
     """Every registered formula. Importing the physics package fills this."""
-    from xforge.physics import ampacity  # noqa: F401  (registers on import)
+    from xforge.physics import (  # noqa: F401  (register on import)
+        ampacity,
+        electrical,
+    )
 
     return dict(_REGISTRY)
 
