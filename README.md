@@ -86,6 +86,29 @@ Rules graduate to gating once their false-positive rate on real boards is known.
 
 Exit codes: `0` clean or advisory-only, `1` a gating rule fired, `2` could not run.
 
+## The app
+
+```bash
+pip install -e ".[parts]"
+xforge ui --project . --model board.stp --netlist design.net
+```
+
+Opens a local instrument at `127.0.0.1:7800` with two jobs: find a part that is
+not in the project yet and bring it in, and look at the board.
+
+**Part search goes online. Builds do not.** A part is fetched once, converted to
+a normal KiCad symbol, footprint and 3D model, written into `parts/<LCSC>/`, and
+recorded in `parts.lock.json`. Everything after that reads the vendored copy, so
+a build two years from now resolves to the same parts with no network and no
+supplier account. Nothing downstream depends on xforge having been involved.
+
+Keyboard: `/` focuses the search field, arrow keys move through results, `Enter`
+imports the selected part, `Escape` clears. A `?q=` in the URL prefills a search,
+so a part can be sent to a colleague as a link.
+
+The server binds to localhost. It serves a project's design files and talks to a
+supplier on your behalf; neither belongs on a public interface.
+
 ## Conductor sizing
 
 `xforge power` turns declared currents into the copper geometry they need.

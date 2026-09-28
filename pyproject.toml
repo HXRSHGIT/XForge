@@ -13,6 +13,8 @@ dependencies = ["pyyaml>=6.0"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
+# STEP -> GLB for the 3D viewer. Heavy (OpenCASCADE), hence optional.
+viewer = ["cadquery-ocp>=8.0", "trimesh>=5.0", "pygltflib>=1.16"]
 
 [project.scripts]
 xforge = "xforge.cli:main"
@@ -21,8 +23,12 @@ xforge = "xforge.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-xforge = ["profiles/*.yaml"]
+xforge = ["profiles/*.yaml", "ui/static/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"
+# Supplier-dependent tests are opt-in so the suite runs offline and in CI.
+addopts = "-q -m 'not network'"
+markers = [
+    "network: hits a live supplier API; run with -m network",
+]

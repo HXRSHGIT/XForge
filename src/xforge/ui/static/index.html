@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>xforge</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600&family=Azeret+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<div class="app">
+
+  <header class="head">
+    <div class="mark">X<b>FORGE</b></div>
+    <nav class="tabs" role="tablist">
+      <button class="tab" role="tab" id="tab-parts" aria-selected="true">Parts</button>
+      <button class="tab" role="tab" id="tab-board" aria-selected="false">Board</button>
+    </nav>
+    <div class="right">
+      <span><i class="lamp" id="lamp"></i><span id="conn">starting</span></span>
+      <span id="proj"></span>
+    </div>
+  </header>
+
+  <aside class="rail">
+    <div class="search">
+      <input id="q" type="search" autocomplete="off" spellcheck="false"
+             placeholder="Search parts by number or description" aria-label="Search parts">
+      <span class="slash" aria-hidden="true">/</span>
+    </div>
+    <div class="tally" id="tally" hidden>
+      <span id="tally-left"></span>
+      <span id="tally-right"></span>
+    </div>
+    <div class="results" id="results">
+      <div class="placeholder" id="hint">
+        Search the supplier catalogue for a part that is not in the project
+        library yet. Press <kbd>/</kbd> to focus the field, <kbd>&uarr;</kbd>
+        <kbd>&darr;</kbd> to move through results, <kbd>Enter</kbd> to import
+        the selected part.
+        <br><br>
+        Importing writes the symbol, footprint and 3D model into the project
+        and records it in <code>parts.lock.json</code>. Builds read the
+        vendored copy, so they keep working with no network.
+      </div>
+    </div>
+  </aside>
+
+  <main class="view" id="view">
+    <canvas id="canvas" class="hidden"></canvas>
+
+    <div class="empty" id="view-empty">
+      <!-- A board outline, drawn rather than illustrated: this is what the
+           viewport is for, so the empty state shows the shape of the thing. -->
+      <svg width="132" height="96" viewBox="0 0 132 96" fill="none" aria-hidden="true">
+        <rect x="6" y="6" width="120" height="84" rx="4"
+              stroke="var(--gold-dim)" stroke-width="1.5" stroke-dasharray="5 4"/>
+        <circle cx="18" cy="18" r="3.5" stroke="var(--dimmer)"/>
+        <circle cx="114" cy="18" r="3.5" stroke="var(--dimmer)"/>
+        <circle cx="18" cy="78" r="3.5" stroke="var(--dimmer)"/>
+        <circle cx="114" cy="78" r="3.5" stroke="var(--dimmer)"/>
+        <rect x="34" y="34" width="30" height="22" stroke="var(--dimmer)"/>
+        <rect x="76" y="40" width="18" height="12" stroke="var(--dimmer)"/>
+        <path d="M64 45 H76" stroke="var(--dimmer)"/>
+        <path d="M34 62 H94" stroke="var(--dimmer)"/>
+      </svg>
+      <h2 id="empty-title">No board loaded</h2>
+      <p id="empty-body">
+        Point the server at the IDF board file your ECAD tool exports.
+      </p>
+      <code id="empty-cmd">xforge ui --model board.emn</code>
+    </div>
+
+    <div class="readout hidden" id="readout"></div>
+    <div class="detail hidden" id="detail"></div>
+  </main>
+
+  <footer class="foot">
+    <span>project <b id="f-proj">&mdash;</b></span>
+    <span>vendored <b id="f-vend">0</b></span>
+    <span>results <b id="f-res">0</b></span>
+    <span class="msg" id="f-msg"></span>
+  </footer>
+
+</div>
+
+<script type="importmap">
+{ "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
+} }
+</script>
+<script type="module" src="/app.js"></script>
+</body>
+</html>

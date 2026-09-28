@@ -107,6 +107,22 @@ def _cmd_check(args) -> int:
     return EXIT_OK
 
 
+def _cmd_ui(args) -> int:
+    """Start the local app."""
+    from xforge.ui import serve
+
+    serve(
+        project=args.project,
+        netlist=args.netlist,
+        config=args.config,
+        model=args.model,
+        host=args.host,
+        port=args.port,
+        open_browser=not args.no_browser,
+    )
+    return EXIT_OK
+
+
 def _cmd_formulas(args) -> int:
     """Every calculation the tool can perform, and where it came from."""
     from xforge.physics import formula
@@ -259,6 +275,19 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p2.add_argument("--csv", type=Path, default=None, help="write a constraint CSV")
     p2.set_defaults(func=_cmd_power)
+
+    u = sub.add_parser("ui", help="start the local app (part search + board viewer)")
+    u.add_argument(
+        "--project", type=Path, default=Path.cwd(),
+        help="project root; imported parts are vendored here",
+    )
+    u.add_argument("--netlist", type=Path, default=None)
+    u.add_argument("-c", "--config", type=Path, default=None)
+    u.add_argument("--model", type=Path, default=None, help="STEP file to view")
+    u.add_argument("--host", default="127.0.0.1")
+    u.add_argument("--port", type=int, default=7800)
+    u.add_argument("--no-browser", action="store_true")
+    u.set_defaults(func=_cmd_ui)
 
     fm = sub.add_parser(
         "formulas", help="list the calculations and their provenance"
