@@ -13,6 +13,9 @@ dependencies = ["pyyaml>=6.0"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
+# DBC generation itself is dependency-free; cantools is only needed to parse
+# a DBC back (the round-trip test, or anyone consuming the output downstream).
+comms = ["cantools>=39.0"]
 
 [project.scripts]
 xforge = "xforge.cli:main"
