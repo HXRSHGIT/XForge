@@ -16,6 +16,10 @@ dev = ["pytest>=8.0"]
 # DBC generation itself is dependency-free; cantools is only needed to parse
 # a DBC back (the round-trip test, or anyone consuming the output downstream).
 comms = ["cantools>=39.0"]
+# The STEP reader. Heavy (OpenCASCADE) and not always loadable - Windows
+# Smart App Control blocks one of its DLLs on some machines - so the IDF
+# reader is the default board path and this stays optional.
+viewer = ["cadquery-ocp>=8.0", "trimesh>=5.0", "pygltflib>=1.16"]
 
 [project.scripts]
 xforge = "xforge.cli:main"
