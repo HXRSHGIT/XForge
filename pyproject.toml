@@ -28,8 +28,12 @@ xforge = "xforge.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-xforge = ["profiles/*.yaml"]
+xforge = ["profiles/*.yaml", "ui/static/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"
+# Supplier-dependent tests are opt-in so the suite runs offline and in CI.
+addopts = "-q -m 'not network'"
+markers = [
+    "network: hits a live supplier API; run with -m network",
+]
