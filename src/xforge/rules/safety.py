@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from typing import Iterable, TYPE_CHECKING
 
+from xforge.physics import electrical as elec
 from xforge.rules.base import Finding, Severity, Status, rule
 
 if TYPE_CHECKING:
@@ -221,7 +222,20 @@ def coil_clamp(design: "Design", config: "Config") -> Iterable[Finding]:
                 "opening and can reduce breaking capacity."
             ),
             subjects=[net.name]
-            + [f"{p} ({(design.component(p.ref).value if design.component(p.ref) else '?')})" for p in net.pins],
+            + [
+                f"{p} ({(design.component(p.ref).value if design.component(p.ref) else '?')})"
+                for p in net.pins
+            ]
+            + [
+                "",
+                "What to check, with the coil L and I from the contactor "
+                "datasheet:",
+                elec.FLYBACK_VOLTAGE.explain(),
+                elec.COIL_ENERGY.explain(),
+                "  worked example: a 100 mH coil at 0.3 A stores "
+                f"{elec.coil_energy_j(0.1, 0.3) * 1000:.1f} mJ, which the "
+                "driver absorbs as avalanche energy if nothing clamps it.",
+            ],
             confidence="needs-review",
         )
 
@@ -275,6 +289,11 @@ def thermistor_bias(design: "Design", config: "Config") -> Iterable[Finding]:
                     reaches_connector = True
         if biased:
             continue
+        # A worked case for the common 10 k / B=3435 NTC, so the finding
+        # carries a number rather than only an instruction.
+        r25, beta = 10_000.0, 3435.0
+        hot = elec.ntc_resistance(beta, r25, 85.0)
+        cold = elec.ntc_resistance(beta, r25, -20.0)
         yield Finding(
             rule_id="XF012",
             severity=Severity.WARNING,
@@ -291,6 +310,17 @@ def thermistor_bias(design: "Design", config: "Config") -> Iterable[Finding]:
                 )
             ),
             subjects=[comp.ref]
-            + [f"{_leaf(n.name)} (deg={n.degree})" for n in nets],
+            + [f"{_leaf(n.name)} (deg={n.degree})" for n in nets]
+            + [
+                "",
+                "Sizing the bias resistor:",
+                elec.NTC_BIAS.explain(),
+                elec.NTC_BETA.explain(),
+                f"  worked example, 10 k NTC with B=3435: "
+                f"{cold / 1000:.0f} k at -20 C, 10 k at 25 C, "
+                f"{hot:.0f} ohm at 85 C. Biasing at 10 k maximises "
+                "sensitivity near 25 C; bias lower to favour the hot end, "
+                "where a contactor or shunt sensor actually lives.",
+            ],
             confidence="needs-review",
         )

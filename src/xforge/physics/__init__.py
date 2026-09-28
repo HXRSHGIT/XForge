@@ -1,5 +1,5 @@
-"""Physical models. Geometry and heat, no domain assumptions."""
+"""Physical models. Geometry, heat and circuits - no domain assumptions."""
 
-from xforge.physics import ampacity
+from xforge.physics import ampacity, electrical, formula
 
-__all__ = ["ampacity"]
+__all__ = ["ampacity", "electrical", "formula"]
