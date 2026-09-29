@@ -4,6 +4,7 @@
 |---|---|
 | [`platform-study/atopile-analysis.md`](platform-study/atopile-analysis.md) | The study that led to this repo. Reverse-engineering of atopile 0.15.9, feature-gap analysis against Xbattery's needs, competitive landscape, and the build plan. 14 sections. |
 | [`standards.md`](standards.md) | Where every constant in the rule engine comes from, evidence tiers, and which rules are allowed to gate a build. **Read this before adding a numeric rule.** |
+| [`enforcement.md`](enforcement.md) | When XForge fails a build. The four criteria a rule must meet to gate, the measured evidence that promoted XF001 and XF005, and how baselines let gating start on a design that is not clean yet. |
 | [`BJB-RevC-findings.md`](BJB-RevC-findings.md) | First real run against a live design. Root cause of the 13 errors on BJB RevC. |
 | [`comms.md`](comms.md) | `xforge.comms`: one YAML spec generates the DBC, the register map and the firmware pack/unpack code, so they can't drift apart. Spec format, a worked example, and what the CLI wiring should look like. |
 

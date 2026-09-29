@@ -19,9 +19,17 @@ jobs:
       - run: python -m pytest
 
   check-bjb:
-    # Runs the checker against the tracked BJB fixture on every push, so a
-    # change in finding counts shows up as a diff rather than a surprise.
-    # Advisory: --gate is deliberately NOT passed yet. See docs/enforcement.md.
+    # Runs the checker against the tracked BJB fixture on every push.
+    #
+    # This job GATES, as of 29 Sep 2026: XF001 and XF005 are listed in
+    # gating_rules, so the job fails on an error from either. The defect they
+    # currently catch is real and unfixed, so xforge.bjb.baseline.json accepts
+    # those 13 findings by identity and the job stays green until something
+    # NEW appears. See docs/enforcement.md for the evidence behind the
+    # promotion and for how to move the baseline.
+    #
+    # If this job goes red, do not widen the baseline to make it green. Read
+    # what it names.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -29,8 +37,13 @@ jobs:
         with:
           python-version: "3.12"
       - run: python -m pip install -e .
-      - run: xforge check tests/fixtures/bjb_revc.net -c xforge.bjb.yaml --json findings.json
+      - run: >
+          xforge check tests/fixtures/bjb_revc.net
+          -c xforge.bjb.yaml
+          --baseline xforge.bjb.baseline.json
+          --json findings.json
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: bjb-findings
           path: findings.json

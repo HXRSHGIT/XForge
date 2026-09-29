@@ -101,9 +101,91 @@ def _cmd_check(args) -> int:
         and f.status is Status.VIOLATION
         and f.severity >= Severity.ERROR
     ]
+    if not gating:
+        return EXIT_OK
+
+    # A baseline holds the violations already known and accepted, so switching
+    # gating on does not fail the build over a defect that was there yesterday.
+    baseline = None
+    if args.baseline:
+        from xforge.baseline import Baseline, BaselineError
+
+        try:
+            baseline = Baseline.load(args.baseline)
+        except BaselineError as e:
+            print(f"\nERROR: {e}", file=sys.stderr)
+            return EXIT_ERROR
+
+        accepted = [f for f in fired if baseline.accepts(f)]
+        fired = [f for f in fired if not baseline.accepts(f)]
+        if accepted:
+            print(
+                f"\nbaseline: {len(accepted)} known violation(s) accepted "
+                f"from {args.baseline.name}"
+            )
+        stale = baseline.stale(findings)
+        if stale:
+            # Fixed defects, or a rule that went quiet. Either way the file is
+            # now broader than the truth.
+            print(f"  {len(stale)} baseline entr(ies) no longer fire:")
+            for e in stale:
+                print(f"    {e.rule}  {e.key}")
+            print("  run `xforge baseline ... --prune` to tighten it")
+
     if fired:
         print(f"\nFAIL: {len(fired)} finding(s) from gating rules {sorted(gating)}")
+        for f in fired:
+            print(f"  {f.rule_id}  {f.key or f.summary}")
+        if baseline is not None:
+            print(
+                "\nIf these are accepted rather than fixed, add them with "
+                "`xforge baseline`."
+            )
         return EXIT_FINDINGS
+
+    print(f"\nPASS: no unaccepted findings from gating rules {sorted(gating)}")
+    return EXIT_OK
+
+
+def _cmd_baseline(args) -> int:
+    """Record the violations a project accepts for now."""
+    from xforge.baseline import Baseline, BaselineError
+
+    design = _read(args.netlist)
+    config = Config.load(args.config)
+    findings = run(design, config)
+
+    if args.prune:
+        try:
+            current = Baseline.load(args.out)
+        except BaselineError as e:
+            print(f"ERROR: {e}", file=sys.stderr)
+            return EXIT_ERROR
+        stale = current.stale(findings)
+        baseline = current.pruned(findings)
+        for e in stale:
+            print(f"  dropped  {e.rule}  {e.key}")
+        print(f"{len(stale)} stale entr(ies) removed, {len(baseline)} remain")
+    else:
+        # Only rules that can gate, unless asked otherwise: see
+        # Baseline.from_findings for why a wider file is a liability.
+        rules = None
+        if not args.all:
+            rules = config.gating_rules or {
+                r for r, v in registry().items() if v.blocking
+            }
+        baseline = Baseline.from_findings(
+            findings, source=args.netlist.as_posix(), note=args.note, rules=rules
+        )
+        by_rule: dict[str, int] = {}
+        for e in baseline.entries:
+            by_rule[e.rule] = by_rule.get(e.rule, 0) + 1
+        for rule in sorted(by_rule):
+            print(f"  {rule}  {by_rule[rule]}")
+        print(f"{len(baseline)} violation(s) accepted")
+
+    baseline.save(args.out)
+    print(f"baseline: {args.out}")
     return EXIT_OK
 
 
@@ -394,7 +476,38 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="fail on errors from any gating-capable rule (CI use)",
     )
+    c.add_argument(
+        "--baseline",
+        type=Path,
+        default=None,
+        help="accept the violations in this file; fail only on new ones",
+    )
     c.set_defaults(func=_cmd_check)
+
+    b = sub.add_parser(
+        "baseline", help="record the violations a project accepts for now"
+    )
+    b.add_argument("netlist", type=Path)
+    b.add_argument("-c", "--config", type=Path, default=None)
+    b.add_argument(
+        "-o",
+        "--out",
+        type=Path,
+        default=Path("xforge.baseline.json"),
+        help="where to write it (default: xforge.baseline.json)",
+    )
+    b.add_argument(
+        "--prune",
+        action="store_true",
+        help="drop entries that no longer fire, instead of rewriting it",
+    )
+    b.add_argument(
+        "--all",
+        action="store_true",
+        help="record every violation, not only the ones that can gate",
+    )
+    b.add_argument("--note", default="", help="why these are accepted")
+    b.set_defaults(func=_cmd_baseline)
 
     p2 = sub.add_parser(
         "power", help="conductor requirements for declared currents"
