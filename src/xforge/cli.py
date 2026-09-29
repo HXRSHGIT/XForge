@@ -189,6 +189,48 @@ def _cmd_baseline(args) -> int:
     return EXIT_OK
 
 
+def _cmd_evidence(args) -> int:
+    """Assemble the verification evidence pack."""
+    from xforge import evidence, power
+    from xforge.baseline import Baseline, BaselineError
+
+    design = _read(args.netlist)
+    config = Config.load(args.config)
+    findings = run(design, config)
+
+    baseline = None
+    if args.baseline:
+        try:
+            baseline = Baseline.load(args.baseline)
+        except BaselineError as e:
+            print(f"ERROR: {e}", file=sys.stderr)
+            return EXIT_ERROR
+
+    pack = evidence.assemble(
+        design,
+        findings,
+        config,
+        args.netlist,
+        baseline=baseline,
+        power=power.analyse(design, config),
+    )
+    evidence.to_html(pack, args.out)
+
+    state, sentence = pack.verdict
+    print(f"{design.name}: {state}")
+    print(f"  {sentence}")
+    covered = [c for c in pack.coverage() if c.state == "verified"]
+    print(
+        f"  {len(covered)} subject(s) verified, "
+        f"{len(pack.coverage()) - len(covered)} partial or not covered"
+    )
+    print(f"pack: {args.out}")
+
+    # The pack is a report, not a gate - `check` is the gate. It still refuses
+    # to exit clean while naming unaccepted gating findings on its front page.
+    return EXIT_FINDINGS if pack.unaccepted else EXIT_OK
+
+
 def _finding_json(f) -> dict:
     """A finding as the diff reports it.
 
@@ -508,6 +550,26 @@ def build_parser() -> argparse.ArgumentParser:
     )
     b.add_argument("--note", default="", help="why these are accepted")
     b.set_defaults(func=_cmd_baseline)
+
+    ev = sub.add_parser(
+        "evidence", help="assemble the verification evidence pack"
+    )
+    ev.add_argument("netlist", type=Path)
+    ev.add_argument("-c", "--config", type=Path, default=None)
+    ev.add_argument(
+        "-o",
+        "--out",
+        type=Path,
+        default=Path("evidence.html"),
+        help="where to write the pack (default: evidence.html)",
+    )
+    ev.add_argument(
+        "--baseline",
+        type=Path,
+        default=None,
+        help="accepted deviations to declare in the pack",
+    )
+    ev.set_defaults(func=_cmd_evidence)
 
     p2 = sub.add_parser(
         "power", help="conductor requirements for declared currents"

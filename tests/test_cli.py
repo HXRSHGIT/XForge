@@ -158,6 +158,38 @@ class TestBaselineCommand:
         assert {e.rule for e in Baseline.load(out_file).entries} > {"XF001", "XF005"}
 
 
+class TestEvidenceCommand:
+    def test_it_writes_a_self_contained_pack(self, capsys, tmp_path):
+        out = tmp_path / "ev.html"
+        code, printed = run(
+            ["evidence", str(FIXTURE), "-c", str(CONFIG), "-o", str(out),
+             "--baseline", str(Path(__file__).parents[1] / "xforge.bjb.baseline.json")],
+            capsys,
+        )
+        assert code == cli.EXIT_OK
+        assert "PASS" in printed
+        src = out.read_text(encoding="utf-8")
+        assert "Coverage boundary" in src
+        assert "<style>" in src  # CSS inlined, not linked
+
+    def test_without_a_baseline_it_reports_the_open_defect(self, capsys, tmp_path):
+        out = tmp_path / "ev.html"
+        code, printed = run(
+            ["evidence", str(FIXTURE), "-c", str(CONFIG), "-o", str(out)], capsys
+        )
+        assert code == cli.EXIT_FINDINGS
+        assert "FAIL" in printed
+
+    def test_a_missing_baseline_fails_loudly(self, capsys, tmp_path):
+        code, _ = run(
+            ["evidence", str(FIXTURE), "-c", str(CONFIG),
+             "-o", str(tmp_path / "ev.html"),
+             "--baseline", str(tmp_path / "absent.json")],
+            capsys,
+        )
+        assert code == cli.EXIT_ERROR
+
+
 class TestExitCodes:
     def test_missing_file_is_an_error_not_a_crash(self, capsys):
         code = cli.main(["inspect", "does-not-exist.net"])

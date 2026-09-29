@@ -28,6 +28,7 @@ xforge check design.net -c xforge.yaml --html report.html --json findings.json
 xforge power design.net -c xforge.yaml --netclasses nc.json --csv constraints.csv
 xforge diff old.net new.net -c xforge.yaml --gate
 xforge baseline design.net -c xforge.yaml   # accept what is broken today
+xforge evidence design.net -c xforge.yaml --baseline xforge.baseline.json
 xforge inspect design.net       # census only
 xforge rules                    # what is registered and where each rule comes from
 ```
@@ -186,6 +187,37 @@ regression cannot merge without someone deciding to accept it. Reversing the
 arguments negates the verdict, which is the cheapest check that the comparison
 is symmetric.
 
+## Evidence pack
+
+`xforge evidence` assembles one self-contained HTML file answering the three
+questions a certification reviewer actually asks: what was examined, on whose
+authority, and **what was not covered**.
+
+```bash
+xforge evidence design.net -c xforge.yaml     --baseline xforge.baseline.json -o evidence.html
+```
+
+Seven sections: the design under verification with the netlist's SHA-256, the
+rule register with each rule's cited authority, the accepted deviations, every
+finding, the calculation provenance table with trust tiers, the conductor
+requirements, and the coverage boundary.
+
+The last section is the one that makes the pack worth attaching to anything. A
+report that implies completeness it does not have is worse than no report,
+because it moves a gap from *known open* to *believed closed*. So the boundary
+is derived, not asserted:
+
+- a rule that could not run appears as **not covered**, quoting its own reason
+- a rule that ran and found nothing appears as **partial**, not as a pass —
+  silence may only mean the design contains nothing it applies to
+- every tier C/D formula is listed as unable to gate
+- insulation coordination, thermal, EMC, layout, firmware, component
+  qualification and requirement traceability are named as not covered, because
+  they are
+
+Accepted deviations are printed as *known and open*, never as cleared, and the
+pack states in its own header that it is not a certificate.
+
 ## Conductor sizing
 
 `xforge power` turns declared currents into the copper geometry they need.
@@ -285,6 +317,7 @@ src/xforge/
   readers/           format readers (KiCad netlist today)
   rules/             base.py = framework, one module per rule family
   baseline.py        accepted violations, so gating can start before clean
+  evidence.py        the verification pack, including what it does NOT cover
   diff.py            revision comparison: electrical delta + finding delta
   report.py          single-file HTML + JSON output
   cli.py             argparse CLI

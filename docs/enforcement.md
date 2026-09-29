@@ -139,6 +139,24 @@ revision. This run fails, so the handoff would not have gone out.
 whatever the absolute number. Use it on a pull request; use `check --baseline`
 on a branch. They are complementary, and neither subsumes the other.
 
+## The evidence pack
+
+`xforge evidence` turns a run into a document a reviewer can read, and states
+its own boundary. Enforcement and evidence are two halves of the same claim:
+gating says *this design meets a bar*, and the pack says *here is exactly which
+bar, on whose authority, and what it does not cover*.
+
+The pack derives its boundary rather than asserting it. A rule that could not
+run is reported as **not covered** with its own reason quoted. A rule that ran
+and produced nothing is **partial**, not a pass, because silence may only mean
+the design contains nothing that rule applies to. Every tier C/D formula is
+listed as unable to gate. The accepted deviations appear as known and open, and
+the header says the pack is not a certificate.
+
+That honesty is what makes it usable in a submission. A generated report that
+reads as a clean bill of health, when seven whole subjects were never examined,
+would be actively misleading in front of an auditor.
+
 ## Rules not yet gating
 
 | Rule | Why not |

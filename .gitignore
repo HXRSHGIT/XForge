@@ -5,5 +5,8 @@ out/
 *.egg-info/
 .pytest_cache/
 
-# generated docs
+# generated docs and reports - regenerate, never commit
 XbatteryEDAPlatform.html
+evidence.html
+report.html
+findings.json
