@@ -1,0 +1,86 @@
+{
+  "schema": "xforge.baseline/1",
+  "source": "tests/fixtures/bjb_revc.net",
+  "created": "2026-09-29",
+  "note": "BJB RevC handoff, 24 Sep 2026 12:59. All 13 entries are ONE unfixed defect: the sheet symbols for 'Control, Diagnostics & IoT' and 'HV Power-Path & Safety' carry no pins, so both sheets float and 11 safety signals exist as two unconnected nets each. Root cause and the fix are in docs/BJB-RevC-findings.md; blocked on the schematic owner. Accepted here so gating catches anything NEW rather than drowning in this. Delete these entries as the sheets are wired - do not add to them.",
+  "accepted": [
+    {
+      "rule": "XF001",
+      "key": "BUS_V_SENSE",
+      "severity": "Error",
+      "summary": "Signal 'BUS_V_SENSE' is 2 unconnected nets"
+    },
+    {
+      "rule": "XF001",
+      "key": "FUSE_DROP_SENSE",
+      "severity": "Error",
+      "summary": "Signal 'FUSE_DROP_SENSE' is 2 unconnected nets"
+    },
+    {
+      "rule": "XF001",
+      "key": "MAIN_FB",
+      "severity": "Error",
+      "summary": "Signal 'MAIN_FB' is 2 unconnected nets"
+    },
+    {
+      "rule": "XF001",
+      "key": "PRECHARGE_FB",
+      "severity": "Error",
+      "summary": "Signal 'PRECHARGE_FB' is 2 unconnected nets"
+    },
+    {
+      "rule": "XF001",
+      "key": "SAFE_VOLT_MON",
+      "severity": "Error",
+      "summary": "Signal 'SAFE_VOLT_MON' is 2 unconnected nets"
+    },
+    {
+      "rule": "XF001",
+      "key": "SC_FAULT_N",
+      "severity": "Error",
+      "summary": "Signal 'SC_FAULT_N' is 2 unconnected nets"
+    },
+    {
+      "rule": "XF001",
+      "key": "SC_RESET_N",
+      "severity": "Error",
+      "summary": "Signal 'SC_RESET_N' is 2 unconnected nets"
+    },
+    {
+      "rule": "XF001",
+      "key": "TEMP_CONTACTOR",
+      "severity": "Error",
+      "summary": "Signal 'TEMP_CONTACTOR' is 2 unconnected nets"
+    },
+    {
+      "rule": "XF001",
+      "key": "TEMP_PRECHARGE",
+      "severity": "Error",
+      "summary": "Signal 'TEMP_PRECHARGE' is 2 unconnected nets"
+    },
+    {
+      "rule": "XF001",
+      "key": "TEMP_SHUNT",
+      "severity": "Error",
+      "summary": "Signal 'TEMP_SHUNT' is 2 unconnected nets"
+    },
+    {
+      "rule": "XF001",
+      "key": "WELD_MON",
+      "severity": "Error",
+      "summary": "Signal 'WELD_MON' is 2 unconnected nets"
+    },
+    {
+      "rule": "XF005",
+      "key": "Control, Diagnostics & IoT",
+      "severity": "Error",
+      "summary": "Sheet 'Control, Diagnostics & IoT' shares no net with any other sheet (20 parts, 39 local nets)"
+    },
+    {
+      "rule": "XF005",
+      "key": "HV Power-Path & Safety",
+      "severity": "Error",
+      "summary": "Sheet 'HV Power-Path & Safety' shares no net with any other sheet (20 parts, 33 local nets)"
+    }
+  ]
+}

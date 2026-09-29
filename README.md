@@ -27,6 +27,7 @@ runner we do not control.
 xforge check design.net -c xforge.yaml --html report.html --json findings.json
 xforge power design.net -c xforge.yaml --netclasses nc.json --csv constraints.csv
 xforge diff old.net new.net -c xforge.yaml --gate
+xforge baseline design.net -c xforge.yaml   # accept what is broken today
 xforge inspect design.net       # census only
 xforge rules                    # what is registered and where each rule comes from
 ```
@@ -80,12 +81,42 @@ that led to building this instead of adopting an existing tool.
 
 ## Enforcement
 
-**Advisory by default.** Nothing fails a build until a rule has been listed in
+**Advisory by default.** Nothing fails a build until a rule is listed in
 `gating_rules` in the project config, or `--gate` is passed. This is deliberate:
 one false positive early on is enough for a team to start ignoring the tool.
-Rules graduate to gating once their false-positive rate on real boards is known.
+Rules graduate once their false-positive rate on real boards is *measured*.
 
-Exit codes: `0` clean or advisory-only, `1` a gating rule fired, `2` could not run.
+**XF001 and XF005 gate as of 29 Sep 2026.** Measured across all ten real BJB
+netlist exports, from two different toolchains: they fire on three and are
+correct on all three. Zero false positives. The evidence table is in
+[`docs/enforcement.md`](docs/enforcement.md).
+
+### Baselines
+
+Gating a design that already has defects fails immediately, and a permanently
+red build is a build nobody reads. A baseline records what is broken *today*,
+so gating fails only on what is new.
+
+```bash
+xforge baseline design.net -c xforge.yaml -o xforge.baseline.json     --note "why these are accepted, and who owns fixing them"
+
+xforge check design.net -c xforge.yaml --baseline xforge.baseline.json
+```
+
+Entries match on `(rule_id, key)` — the same identity the diff uses — so a
+reworded message still matches and a *different* defect does not slip in behind
+one. Only gating rules are recorded by default: an entry for an advisory rule
+excuses nothing today but would silently excuse a real defect the day that rule
+graduates. Entries that no longer fire are printed on every run, and
+`xforge baseline --prune` drops them. The file is a ratchet — it should shrink.
+
+The test that matters: baseline the 24 Sep 11:06 BJB revision and gate the
+12:59 handoff, and it fails on exactly the 12 new defects while *not* blaming
+the sheet that was already floating at 11:06. It would have stopped that
+handoff.
+
+Exit codes: `0` clean or advisory-only, `1` a gating rule fired on something
+not accepted, `2` could not run.
 
 ## The app
 
@@ -253,6 +284,7 @@ src/xforge/
   config.py          xforge.yaml: domains, expectations, policy
   readers/           format readers (KiCad netlist today)
   rules/             base.py = framework, one module per rule family
+  baseline.py        accepted violations, so gating can start before clean
   diff.py            revision comparison: electrical delta + finding delta
   report.py          single-file HTML + JSON output
   cli.py             argparse CLI

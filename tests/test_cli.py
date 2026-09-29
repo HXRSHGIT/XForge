@@ -54,14 +54,17 @@ class TestSubcommands:
         assert "valid for" in out
 
     def test_check(self, capsys):
+        # XF001/XF005 gate under xforge.bjb.yaml as of 29 Sep 2026, and the
+        # fixture still carries the defect, so a bare run is expected to fail.
+        # TestBaselineCommand covers the green path.
         code, out = run(["check", str(FIXTURE), "-c", str(CONFIG)], capsys)
-        assert code == cli.EXIT_OK  # advisory: nothing gates yet
+        assert code == cli.EXIT_FINDINGS
         assert "error," in out
 
     def test_check_verbose_renders_multiline_subjects(self, capsys):
         """A formula explanation is multi-line; every line must be indented."""
         code, out = run(["check", str(FIXTURE), "-c", str(CONFIG), "-v"], capsys)
-        assert code == cli.EXIT_OK
+        assert code == cli.EXIT_FINDINGS
         assert "R(T) = R0 * exp(B * (1/T - 1/T0))" in out
         for line in out.splitlines():
             if "R(T) = R0 * exp" in line:
@@ -84,6 +87,75 @@ class TestSubcommands:
         code, out = run(["power", str(FIXTURE), "-c", str(cfg)], capsys)
         assert code == cli.EXIT_OK
         assert "No currents declared" in out
+
+
+class TestBaselineCommand:
+    def test_it_writes_a_loadable_baseline(self, capsys, tmp_path):
+        out_file = tmp_path / "bl.json"
+        code, out = run(
+            ["baseline", str(FIXTURE), "-c", str(CONFIG), "-o", str(out_file)],
+            capsys,
+        )
+        assert code == cli.EXIT_OK
+        assert out_file.exists()
+        from xforge.baseline import Baseline
+
+        assert len(Baseline.load(out_file)) == 13
+
+    def test_a_baselined_design_stops_failing(self, capsys, tmp_path):
+        """The whole point: gate on, known defect accepted, build green."""
+        out_file = tmp_path / "bl.json"
+        run(["baseline", str(FIXTURE), "-c", str(CONFIG), "-o", str(out_file)], capsys)
+        code, out = run(
+            ["check", str(FIXTURE), "-c", str(CONFIG), "-q",
+             "--baseline", str(out_file)],
+            capsys,
+        )
+        assert code == cli.EXIT_OK
+        assert "13 known violation(s) accepted" in out
+        assert "PASS" in out
+
+    def test_a_missing_baseline_fails_loudly(self, capsys, tmp_path):
+        """Never treat an absent file as 'nothing to accept'."""
+        code, _ = run(
+            ["check", str(FIXTURE), "-c", str(CONFIG), "-q",
+             "--baseline", str(tmp_path / "absent.json")],
+            capsys,
+        )
+        assert code == cli.EXIT_ERROR
+
+    def test_pruning_reports_what_it_dropped(self, capsys, tmp_path):
+        import json
+
+        out_file = tmp_path / "bl.json"
+        run(["baseline", str(FIXTURE), "-c", str(CONFIG), "-o", str(out_file)], capsys)
+        raw = json.loads(out_file.read_text())
+        raw["accepted"].append({"rule": "XF001", "key": "NOT_A_REAL_NET"})
+        out_file.write_text(json.dumps(raw))
+
+        code, out = run(
+            ["baseline", str(FIXTURE), "-c", str(CONFIG), "-o", str(out_file),
+             "--prune"],
+            capsys,
+        )
+        assert code == cli.EXIT_OK
+        assert "NOT_A_REAL_NET" in out
+        assert "1 stale entr" in out
+
+        from xforge.baseline import Baseline
+
+        assert len(Baseline.load(out_file)) == 13
+
+    def test_all_records_every_rule(self, capsys, tmp_path):
+        out_file = tmp_path / "bl.json"
+        run(
+            ["baseline", str(FIXTURE), "-c", str(CONFIG), "-o", str(out_file),
+             "--all"],
+            capsys,
+        )
+        from xforge.baseline import Baseline
+
+        assert {e.rule for e in Baseline.load(out_file).entries} > {"XF001", "XF005"}
 
 
 class TestExitCodes:

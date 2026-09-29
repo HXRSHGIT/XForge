@@ -57,11 +57,18 @@ crossings:
 # them now would hide the defect rather than tune the rule.
 expected_dangling: []
 
-# Advisory-only. Rules graduate to gating once their false-positive rate on
-# real boards is known. XF001 and XF005 are the first candidates - both are
-# currently firing on a verified, reproducible defect with zero false
-# positives, so they are the ones to promote first.
-gating_rules: []
+# Rules graduate to gating once their false-positive rate on real boards is
+# known. XF001 and XF005 graduated on 29 Sep 2026: measured across all ten
+# real netlist exports on record - two toolchains, Eeschema and `ato build` -
+# they fire on three and are correct on all three, with zero false positives.
+# The evidence table is in docs/enforcement.md.
+#
+# The defect they catch is real and still unfixed, so `xforge.bjb.baseline.json`
+# accepts it explicitly. Gating therefore fails on anything NEW, which is the
+# point: it would have blocked the 24 Sep 12:59 handoff.
+gating_rules:
+  - XF001
+  - XF005
 
 # ── conductor sizing ──────────────────────────────────────────────────
 # A netlist cannot say what a net carries, so currents are declared here.
