@@ -33,6 +33,7 @@ def unspecified_rating(design: "Design", config: "Config") -> Iterable[Finding]:
         yield Finding(
             rule_id="XF006",
             severity=Severity.ERROR if critical else Severity.WARNING,
+            key=comp.ref,
             summary=f"{comp.ref} has no specified rating: \"{comp.value}\"",
             detail=(
                 "The value string still carries a placeholder. "
@@ -72,6 +73,7 @@ def fuse_present(design: "Design", config: "Config") -> Iterable[Finding]:
         yield Finding(
             rule_id="XF007",
             severity=Severity.WARNING,
+            key="no-fuse",
             summary="No fuse found anywhere in the design",
             detail=(
                 "No component classifies as a fuse. On a battery junction box "
@@ -85,6 +87,7 @@ def fuse_present(design: "Design", config: "Config") -> Iterable[Finding]:
         yield Finding(
             rule_id="XF007",
             severity=Severity.INFO,
+            key=f.ref,
             summary=f"{f.ref} fuse: {f.value}",
             detail=(
                 "Rating is specified."

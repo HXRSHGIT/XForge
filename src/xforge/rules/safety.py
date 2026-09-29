@@ -128,6 +128,7 @@ def interlock_chain(design: "Design", config: "Config") -> Iterable[Finding]:
         yield Finding(
             rule_id="XF010",
             severity=Severity.ERROR,
+            key="interlock-orphans",
             summary=f"{len(orphans)} interlock switch(es) not in the chain",
             detail=(
                 "These switches share no two-pin net with another interlock "
@@ -208,6 +209,7 @@ def coil_clamp(design: "Design", config: "Config") -> Iterable[Finding]:
         yield Finding(
             rule_id="XF011",
             severity=Severity.WARNING,
+            key=net.name,
             summary=f"Coil net '{_leaf(net.name)}' has no clamp element",
             detail=(
                 "No diode, TVS or zener sits on this net. "
@@ -297,6 +299,7 @@ def thermistor_bias(design: "Design", config: "Config") -> Iterable[Finding]:
         yield Finding(
             rule_id="XF012",
             severity=Severity.WARNING,
+            key=comp.ref,
             summary=f"{comp.ref} ({comp.value}) has no bias resistor",
             detail=(
                 "Neither terminal net reaches a resistor, so this thermistor "
