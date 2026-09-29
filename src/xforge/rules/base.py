@@ -50,6 +50,16 @@ class Finding:
     subjects: list[str] = field(default_factory=list)  # nets, refs, pins
     confidence: str = "verified"  # verified | probable | needs-review
     status: Status = Status.VIOLATION
+    # What this finding is *about*, stable across revisions: a net name, a
+    # reference designator, a sheet. Used to tell "the same defect" from "a
+    # different one" when comparing two revisions. Summaries carry counts and
+    # worked numbers that move without the defect changing, so they cannot
+    # serve as identity.
+    key: str = ""
+
+    @property
+    def identity(self) -> tuple[str, str]:
+        return (self.rule_id, self.key or self.summary)
 
     def sort_key(self):
         order = {Status.VIOLATION: 0, Status.BLOCKED: 1, Status.PASS: 2}

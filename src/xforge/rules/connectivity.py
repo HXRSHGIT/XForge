@@ -67,6 +67,7 @@ def signal_split_across_sheets(
         yield Finding(
             rule_id="XF001",
             severity=Severity.ERROR if weakest <= 2 else Severity.WARNING,
+            key=leaf,
             summary=f"Signal '{leaf}' is {len(nets)} unconnected nets",
             detail=detail,
             subjects=[f"{n.name} (deg={n.degree})" for n in nets],
@@ -97,6 +98,7 @@ def dangling_net(design: "Design", config: "Config") -> Iterable[Finding]:
         yield Finding(
             rule_id="XF002",
             severity=Severity.WARNING,
+            key=net.name,
             summary=f"Net '{net.name}' reaches only {pin}",
             detail=(
                 f"Single connection to {pin} ({what}), pin type "
@@ -127,6 +129,7 @@ def placeholder_parts(design: "Design", config: "Config") -> Iterable[Finding]:
     yield Finding(
         rule_id="XF004",
         severity=Severity.INFO,
+        key="placeholder-footprints",
         summary=f"{len(placeholders)} parts have no production footprint",
         detail=(
             "These carry placeholder or empty footprints, so they cannot be "

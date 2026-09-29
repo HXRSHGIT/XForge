@@ -26,6 +26,7 @@ runner we do not control.
 ```bash
 xforge check design.net -c xforge.yaml --html report.html --json findings.json
 xforge power design.net -c xforge.yaml --netclasses nc.json --csv constraints.csv
+xforge diff old.net new.net -c xforge.yaml --gate
 xforge inspect design.net       # census only
 xforge rules                    # what is registered and where each rule comes from
 ```
@@ -108,6 +109,51 @@ so a part can be sent to a colleague as a link.
 
 The server binds to localhost. It serves a project's design files and talks to a
 supplier on your behalf; neither belongs on a public interface.
+
+## Comparing revisions
+
+`xforge diff` answers the question a text diff cannot: **did this revision
+make the board better or worse.**
+
+```bash
+xforge diff fixed2_project.net BJB_RevC_Netlist.net -c xforge.bjb.yaml
+```
+
+```
+fixed2_project.net -> BJB_RevC_Netlist.net
+  39 more violation(s)
+
+  components  +26 -0 ~0
+  nets        +42 -7 ~6
+
+  resolved (9):
+    [Warning ] XF002  Net '/Control, Diagnostics & IoT/RTC_32K' reaches only U901.1
+    [Warning ] XF007  No fuse found anywhere in the design
+  introduced (48):
+    [Error   ] XF001  Signal 'BUS_V_SENSE' is 2 unconnected nets
+    ...
+```
+
+Netlists reorder themselves on every export, so a line diff of those two files
+is noise. The delta above is the whole story of that handoff in one line.
+
+### Findings have a stable identity
+
+Each finding carries a `key` naming what it is *about* — a net, a refdes, a
+sheet — separate from the prose summary. Two revisions are compared on
+`(rule_id, key)`.
+
+This matters more than it sounds. Keyed on summary text, a sheet that merely
+grew from 14 to 20 parts read as one defect resolved plus a different one
+introduced, and the counts were quietly wrong. Keys also keep genuinely
+different defects apart: on the BJB, XF007 resolved `no-fuse` and introduced
+`F900` in the same step — a fuse was added, but with a TBD rating. That is not
+a fix, and the diff says so.
+
+`--gate` exits non-zero when the new revision has more violations, so a
+regression cannot merge without someone deciding to accept it. Reversing the
+arguments negates the verdict, which is the cheapest check that the comparison
+is symmetric.
 
 ## Conductor sizing
 
@@ -207,6 +253,7 @@ src/xforge/
   config.py          xforge.yaml: domains, expectations, policy
   readers/           format readers (KiCad netlist today)
   rules/             base.py = framework, one module per rule family
+  diff.py            revision comparison: electrical delta + finding delta
   report.py          single-file HTML + JSON output
   cli.py             argparse CLI
 tests/

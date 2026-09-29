@@ -107,6 +107,117 @@ def _cmd_check(args) -> int:
     return EXIT_OK
 
 
+def _finding_json(f) -> dict:
+    """A finding as the diff reports it.
+
+    `key` is what makes this trackable across revisions - a net, a refdes, a
+    sheet - so a downstream tool can follow one defect through a series of
+    revisions without matching on prose.
+    """
+    return {
+        "rule": f.rule_id,
+        "severity": f.severity.label,
+        "key": f.key,
+        "summary": f.summary,
+    }
+
+
+def _cmd_diff(args) -> int:
+    """Compare two revisions: what changed electrically, and did it help."""
+    from xforge import diff as diffmod
+    from xforge.rules import run
+
+    old = _read(args.old)
+    new = _read(args.new)
+    config = Config.load(args.config)
+    result = diffmod.compare(old, new, run(old, config), run(new, config))
+
+    print(f"{args.old.name} -> {args.new.name}")
+    print(f"  {result.verdict}")
+    print()
+
+    c = result.counts()
+    print(
+        f"  components  +{c['components_added']} -{c['components_removed']} "
+        f"~{c['components_changed']}"
+    )
+    print(
+        f"  nets        +{c['nets_added']} -{c['nets_removed']} "
+        f"~{c['nets_changed']}"
+        + (f"  merged {c['nets_merged']}" if c["nets_merged"] else "")
+    )
+    print()
+
+    if result.merges:
+        print("  connections made:")
+        for m in result.merges:
+            print(f"    {m.describe()}")
+        print()
+
+    for label, group in (
+        ("resolved", result.findings.resolved),
+        ("introduced", result.findings.introduced),
+    ):
+        if not group:
+            continue
+        print(f"  {label} ({len(group)}):")
+        shown = group if args.verbose else group[:10]
+        for f in shown:
+            print(f"    [{f.severity.label:8s}] {f.rule_id}  {f.summary}")
+        if len(group) > len(shown):
+            print(f"    ... {len(group) - len(shown)} more (-v for all)")
+        print()
+
+    if args.verbose:
+        for heading, items in (
+            ("component changes", result.components),
+            ("net changes", result.nets),
+        ):
+            if not items:
+                continue
+            print(f"  {heading}:")
+            for item in items:
+                print(f"    {item.describe()}")
+            print()
+
+    if args.json:
+        import json
+
+        args.json.write_text(
+            json.dumps(
+                {
+                    "schema": "xforge.diff/1",
+                    "old": str(args.old),
+                    "new": str(args.new),
+                    "verdict": result.verdict,
+                    "counts": c,
+                    "merges": [m.describe() for m in result.merges],
+                    "resolved": [_finding_json(f) for f in result.findings.resolved],
+                    "introduced": [
+                        _finding_json(f) for f in result.findings.introduced
+                    ],
+                    "unchanged": [
+                        _finding_json(f) for f in result.findings.unchanged
+                    ],
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        print(f"  json: {args.json}")
+
+    # A revision that adds violations fails when asked to gate, so a
+    # regression cannot be merged without someone deciding to accept it.
+    if args.gate and result.findings.net_change > 0:
+        print()
+        print(
+            f"FAIL: this revision introduces {result.findings.net_change} "
+            "more violation(s)"
+        )
+        return EXIT_FINDINGS
+    return EXIT_OK
+
+
 def _cmd_comms(args) -> int:
     """Generate every communications artefact from one spec."""
     from xforge.comms import CommsSpec, SpecError, build
@@ -295,6 +406,20 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p2.add_argument("--csv", type=Path, default=None, help="write a constraint CSV")
     p2.set_defaults(func=_cmd_power)
+
+    df = sub.add_parser("diff", help="compare two revisions of a design")
+    df.add_argument("old", type=Path, help="the earlier netlist")
+    df.add_argument("new", type=Path, help="the netlist under review")
+    df.add_argument("-c", "--config", type=Path, default=None)
+    df.add_argument(
+        "--json", type=Path, default=None, help="write the delta as JSON"
+    )
+    df.add_argument("-v", "--verbose", action="store_true")
+    df.add_argument(
+        "--gate", action="store_true",
+        help="fail if the new revision has more violations (CI use)",
+    )
+    df.set_defaults(func=_cmd_diff)
 
     cm = sub.add_parser(
         "comms", help="generate DBC, register map and firmware from one spec"

@@ -66,6 +66,7 @@ def orphaned_sheet(design: "Design", config: "Config") -> Iterable[Finding]:
         yield Finding(
             rule_id="XF005",
             severity=Severity.ERROR,
+            key=sheet_name,
             summary=(
                 f"Sheet '{sheet_name}' shares no net with any other sheet "
                 f"({len(comps)} parts, {len(local_nets)} local nets)"

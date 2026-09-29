@@ -80,6 +80,7 @@ def undeclared_crossing(design: "Design", config: "Config") -> Iterable[Finding]
             yield Finding(
                 rule_id="XF008",
                 severity=Severity.INFO,
+                key=ref,
                 summary=f"{ref} ({what}) is a declared isolation crossing",
                 detail=(
                     "Spanning the barrier is this part's job. Confirm its "
@@ -112,6 +113,7 @@ def undeclared_crossing(design: "Design", config: "Config") -> Iterable[Finding]
             yield Finding(
                 rule_id="XF008",
                 severity=Severity.ERROR,
+                key=ref,
                 summary=f"{ref} ({what}) bridges domains and is not an isolator",
                 detail=(
                     "A conductor path through this part connects two "

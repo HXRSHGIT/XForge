@@ -81,9 +81,26 @@ safe-voltage monitor are in the same state.
 | `fixed2_project.net` | 24 Sep 11:06 | 165 | 153 | 0 |
 | **`BJB_RevC_Netlist.net` (handoff)** | **24 Sep 12:59** | **191** | **188** | **11** |
 
-The defect is **new in the handoff**. The earlier `hierarchy_fix` work predates
-both sheets and addressed something else. The two sheets were added between
-11:06 and 12:59 on 24 Sep, and the splits arrived with them.
+The **splits** are new in the handoff. The earlier `hierarchy_fix` work predates
+them and addressed something else.
+
+The two orphaned sheets did not arrive together, and that distinction matters
+for where to look:
+
+| Sheet | At 11:06 | At 12:59 | Orphaned |
+|---|---|---|---|
+| `Control, Diagnostics & IoT` | 14 parts | 20 parts | in **both** revisions |
+| `HV Power-Path & Safety` | absent | 20 parts | new in the handoff |
+
+So `Control, Diagnostics & IoT` was already floating at 11:06 and nobody
+noticed for at least an hour and a half; it simply produced no *split* then,
+because none of its net names yet collided with a root-level label. Adding
+`HV Power-Path & Safety` — which carries the safety signals — turned a quiet
+orphan into 11 split signals.
+
+`xforge diff` separates these automatically: it reports
+`HV Power-Path & Safety` as introduced and `Control, Diagnostics & IoT` as
+unchanged, so the older mistake is not blamed on this handoff.
 
 ## Fix
 
